@@ -60,4 +60,24 @@ public class HubCsvParserTest {
 
         assertNull(hubs.get(0).getActive());
     }
+
+    // -------------- issue #4 ------------------------
+    @Test
+    // Every supported true spelling should produce Boolean.TRUE.
+    void shouldNormaliseTrueRepresentations() throws Exception {
+        String csv = """
+            hub_id,Province,sorting_center,active
+            H-500,Gauteng,Johannesburg Central,Y
+            H-501,Gauteng,Johannesburg Central,yes
+            H-502,Gauteng,Johannesburg Central,1
+            H-503,Gauteng,Johannesburg Central,true
+            """;
+
+        List<Hub> hubs = parser.parse(new StringReader(csv));
+
+        assertTrue(hubs.get(0).getActive());
+        assertTrue(hubs.get(1).getActive());
+        assertTrue(hubs.get(2).getActive());
+        assertTrue(hubs.get(3).getActive());
+    }
 }
