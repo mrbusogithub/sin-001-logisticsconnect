@@ -44,4 +44,19 @@ public class HubNormalizerTest {
 
         assertEquals("Cape Town Port", result.getSortingCenter());
     }
+
+    @Test
+        // Verify case variants map to the canonical province name.
+    void shouldNormaliseProvinceCasing() {
+        Hub input = new Hub(
+                "H-502",
+                "gauteng",
+                "Pretoria North",
+                false
+        );
+
+        Hub result = normalizer.normalize(input);
+
+        assertEquals("Gauteng", result.getProvince());
+    }
 }
