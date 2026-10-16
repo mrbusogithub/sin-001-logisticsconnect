@@ -60,5 +60,4 @@ public class HubCsvParserTest {
 
         assertNull(hubs.get(0).getActive());
     }
-
 }
