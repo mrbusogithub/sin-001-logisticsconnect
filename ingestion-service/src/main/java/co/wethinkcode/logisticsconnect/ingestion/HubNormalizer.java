@@ -97,5 +97,4 @@ public class HubNormalizer {
 
         return result.toString();
     }
-
 }
