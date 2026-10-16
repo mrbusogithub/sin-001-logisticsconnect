@@ -59,4 +59,19 @@ public class HubNormalizerTest {
 
         assertEquals("Gauteng", result.getProvince());
     }
+
+    @Test
+        // Blank text is treated as missing data, not a real province name.
+    void shouldConvertBlankTextToNull() {
+        Hub input = new Hub(
+                "H-508",
+                "   ",
+                "Pretoria North",
+                true
+        );
+
+        Hub result = normalizer.normalize(input);
+
+        assertNull(result.getProvince());
+    }
 }
