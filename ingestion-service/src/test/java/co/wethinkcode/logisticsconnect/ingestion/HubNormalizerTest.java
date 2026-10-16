@@ -29,4 +29,19 @@ public class HubNormalizerTest {
         assertEquals("Gauteng", result.getProvince());
         assertEquals("Pretoria North", result.getSortingCenter());
     }
+
+    @Test
+        // Verify repeated spaces inside a name become one space.
+    void shouldCollapseInternalWhitespace() {
+        Hub input = new Hub(
+                "H-505",
+                "Western Cape",
+                "Cape Town  Port",
+                true
+        );
+
+        Hub result = normalizer.normalize(input);
+
+        assertEquals("Cape Town Port", result.getSortingCenter());
+    }
 }
