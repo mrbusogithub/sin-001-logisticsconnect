@@ -57,6 +57,33 @@ conflicting `active` values between them. How you resolve that (which one wins,
 how you detect they're duplicates in the first place) is part of the exercise —
 there's no single correct answer, but be ready to explain your reasoning.
 
+## Normalisation Rules
+
+### Boolean values
+
+The ingestion service normalises the following values:
+
+| Input | Result |
+|---|---|
+| `Y` | `true` |
+| `yes` | `true` |
+| `1` | `true` |
+| `true` | `true` |
+| `N` | `false` |
+| `no` | `false` |
+| `0` | `false` |
+| `false` | `false` |
+
+Unknown, blank or placeholder values such as `unknown` and `N/A` are represented as `null`.
+
+### Missing values
+
+Blank fields and recognised placeholder values are not converted into fake domain values.
+
+Where the field is optional, the value is represented as `null`.
+
+Where a required field is missing, the record should be rejected or handled according to the validation rule for that field.
+
 ## Project structure
 
 ```
