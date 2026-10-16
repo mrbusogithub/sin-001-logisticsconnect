@@ -34,4 +34,18 @@ public class HubCsvParserTest {
         assertEquals("Johannesburg Central", hub.getSortingCenter());
         assertTrue(hub.getActive());
     }
+
+    @Test
+        // Ensure a recognized false value is not mistaken for true or unknown.
+    void shouldParseFalseBoolean() throws Exception {
+        String csv = """
+                hub_id,Province,sorting_center,active
+                H-500,Gauteng,Johannesburg Central,N
+                """;
+
+        List<Hub> hubs = parser.parse(new StringReader(csv));
+
+        assertFalse(hubs.get(0).getActive());
+    }
+
 }
