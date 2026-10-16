@@ -48,4 +48,17 @@ public class HubCsvParserTest {
         assertFalse(hubs.get(0).getActive());
     }
 
+    @Test
+        // Unknown source values remain unknown rather than being guessed.
+    void shouldRepresentUnknownBooleanAsNull() throws Exception {
+        String csv = """
+                hub_id,Province,sorting_center,active
+                H-511,Limpopo,Polokwane Hub,unknown
+                """;
+
+        List<Hub> hubs = parser.parse(new StringReader(csv));
+
+        assertNull(hubs.get(0).getActive());
+    }
+
 }
