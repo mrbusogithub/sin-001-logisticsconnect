@@ -17,7 +17,7 @@ public class HubDeduplicatorTest {
             new HubDeduplicator();
 
     @Test
-        // Two records with the same identity should produce one output record.
+    // Two records with the same identity should produce one output record.
     void shouldRemoveDuplicateHubRecords() {
 
         List<Hub> hubs = List.of(
@@ -43,7 +43,7 @@ public class HubDeduplicatorTest {
     }
 
     @Test
-        // Conflicting duplicates use the smallest ID as the canonical record.
+    // Conflicting duplicates use the smallest ID as the canonical record.
     void shouldChooseSmallestHubIdDeterministically() {
 
         List<Hub> hubs = List.of(
