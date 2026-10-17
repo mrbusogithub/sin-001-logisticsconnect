@@ -41,4 +41,36 @@ public class HubDeduplicatorTest {
         assertEquals(1, result.size());
         assertEquals("H-500", result.get(0).getHubId());
     }
+
+    @Test
+        // Conflicting duplicates use the smallest ID as the canonical record.
+    void shouldChooseSmallestHubIdDeterministically() {
+
+        List<Hub> hubs = List.of(
+                new Hub(
+                        "H-515",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        true
+                ),
+                new Hub(
+                        "H-500",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        true
+                ),
+                new Hub(
+                        "H-504",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        false
+                )
+        );
+
+        List<Hub> result =
+                deduplicator.deduplicate(hubs);
+
+        assertEquals(1, result.size());
+        assertEquals("H-500", result.get(0).getHubId());
+    }
 }
