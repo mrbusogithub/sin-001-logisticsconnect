@@ -98,4 +98,36 @@ public class HubDeduplicatorTest {
 
         assertEquals(2, result.size());
     }
+
+    @Test
+    // Reversing the input must not change which duplicate wins.
+    void deduplicationShouldBeIndependentOfInputOrder() {
+
+        Hub first = new Hub(
+                "H-515",
+                "Gauteng",
+                "Johannesburg Central",
+                true
+        );
+
+        Hub second = new Hub(
+                "H-500",
+                "Gauteng",
+                "Johannesburg Central",
+                false
+        );
+
+        List<Hub> resultOne =
+                deduplicator.deduplicate(List.of(first, second));
+
+        List<Hub> resultTwo =
+                deduplicator.deduplicate(List.of(second, first));
+
+        assertEquals(
+                resultOne.get(0).getHubId(),
+                resultTwo.get(0).getHubId()
+        );
+
+        assertEquals("H-500", resultOne.get(0).getHubId());
+    }
 }
