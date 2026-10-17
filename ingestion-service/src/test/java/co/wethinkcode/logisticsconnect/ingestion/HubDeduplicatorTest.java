@@ -73,4 +73,29 @@ public class HubDeduplicatorTest {
         assertEquals(1, result.size());
         assertEquals("H-500", result.get(0).getHubId());
     }
+
+    @Test
+    // Missing identity data means the two records must remain separate.
+    void shouldNotMergeRecordsWithMissingProvince() {
+
+        List<Hub> hubs = List.of(
+                new Hub(
+                        "H-508",
+                        null,
+                        "Pretoria North",
+                        true
+                ),
+                new Hub(
+                        "H-502",
+                        "Gauteng",
+                        "Pretoria North",
+                        false
+                )
+        );
+
+        List<Hub> result =
+                deduplicator.deduplicate(hubs);
+
+        assertEquals(2, result.size());
+    }
 }
