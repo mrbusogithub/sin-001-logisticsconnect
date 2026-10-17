@@ -89,4 +89,15 @@ public class HubDeduplicator {
     ) {
         return "incomplete-" + index + "-" + hub.getHubId();
     }
+
+    private boolean isMissingValue(String value) {
+        if (value == null || value.isBlank()) {
+            return true;
+        }
+
+        return switch (value.trim().toLowerCase()) {
+            case "n/a", "tbd", "unknown", "-", "nan" -> true;
+            default -> false;
+        };
+    }
 }
