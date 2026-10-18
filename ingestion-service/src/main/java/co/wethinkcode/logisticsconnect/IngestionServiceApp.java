@@ -44,7 +44,51 @@ public class IngestionServiceApp {
         // cleaned records here for the other services to consume.
     }
 
-    public static List<Hub> loadHubs() {
-        return null;
+    // Execute the pipeline: read CSV -> parse -> normalise -> deduplicate.
+    static List<Hub> loadHubs() {
+
+        HubCsvParser parser = new HubCsvParser();
+        HubNormalizer normalizer = new HubNormalizer();
+        HubDeduplicator deduplicator =
+                new HubDeduplicator();
+
+        // Open the packaged CSV resource and automatically close it afterward.
+        try (InputStream inputStream =
+                     IngestionServiceApp.class
+                             .getResourceAsStream(CSV_RESOURCE)) {
+
+            // Fail clearly if the CSV was not copied into the application resources.
+            if (inputStream == null) {
+                throw new IllegalStateException(
+                        "Could not find " + CSV_RESOURCE
+                );
+            }
+
+            // Decode CSV bytes as UTF-8 to avoid platform-dependent character handling.
+            Reader reader =
+                    new InputStreamReader(
+                            inputStream,
+                            StandardCharsets.UTF_8
+                    );
+
+            // Step 1: parse source rows into basic Hub objects.
+            List<Hub> parsed =
+                    parser.parse(reader);
+
+            // Step 2: normalise every parsed hub before comparing duplicates.
+            List<Hub> normalised =
+                    parsed.stream()
+                            .map(normalizer::normalize)
+                            .toList();
+
+            // Step 3: remove duplicates and return the final cleaned dataset.
+            return deduplicator.deduplicate(normalised);
+
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Failed to load hub data",
+                    e
+            );
+        }
     }
 }
