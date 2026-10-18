@@ -23,10 +23,21 @@ public class IngestionServiceApp {
     private static final String CSV_RESOURCE =
             "/hubs-global.csv";
 
+    // Start the service and register its HTTP endpoints.
     public static void main(String[] args) {
+
+        // Load once at startup so requests can serve the already-cleaned data.
+        List<Hub> hubs = loadHubs();
+
         Javalin app = Javalin.create().start(7050);
 
+        // Simple liveness endpoint used to check that the service is running.
         app.get("/health", ctx -> ctx.result("OK"));
+
+        // Return the cleaned hub collection as JSON for downstream services.
+        app.get("/hubs", ctx ->
+                ctx.json(hubs)
+        );
 
         // TODO: read and clean src/main/resources/hubs-global.csv (hubs, sorting centers, regional districts data —
         // trim whitespace, fix casing, normalize dates/booleans) and expose the
