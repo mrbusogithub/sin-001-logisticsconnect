@@ -64,6 +64,50 @@ public class TransitServiceApp {
 
         // TODO (Calculates estimated arrival windows based on hub and delay stage.)
         // Add domain endpoints for transit-service here.
+
+        // Calculate an ETA for the hub ID supplied in the URL.
+        app.get("/transit/{hubId}", ctx -> {
+            String hubId = normalizeHubId(ctx.pathParam("hubId"));
+
+            if (hubId.isBlank()) {
+                error(ctx, 400, "INVALID_HUB_ID",
+                        "Hub ID must not be blank.");
+                return;
+            }
+
+            try {
+                // Step 1: confirm the hub exists and retrieve its details.
+                JsonNode hub = getHub(hubServiceUrl, hubId);
+
+                // Step 2: get the current delay stage from the Delay Stage Service.
+                int stage = getStage(delayServiceUrl, hubId);
+
+                // Step 3: calculate the ETA using the configured values.
+                int etaMinutes = calculateEtaMinutes(
+                        baseDurationMinutes, minutesPerStage, stage);
+
+                // Step 4: estimate the arrival timestamp from the current UTC time.
+                Instant etaAt = Instant.now()
+                        .plus(Duration.ofMinutes(etaMinutes));
+
+                // Return the hub details, delay stage, and calculated ETA.
+                ctx.json(Map.of(
+                        "hubId", hubId,
+                        "province", textOrEmpty(hub, "province"),
+                        "sortingCenter", textOrEmpty(hub, "sortingCenter"),
+                        "delayStage", stage,
+                        "baseDurationMinutes", baseDurationMinutes,
+                        "minutesPerStage", minutesPerStage,
+                        "etaMinutes", etaMinutes,
+                        "etaDuration", Duration.ofMinutes(etaMinutes).toString(),
+                        "etaAt", etaAt.toString()
+                ));
+
+            } catch (ApiException e) {
+                // Return a controlled API error instead of exposing a stack trace.
+                error(ctx, e.status, e.code, e.getMessage());
+            }
+        });
     }
 
     public static int calculateEtaMinutes(int i, int i1, int i2) {
