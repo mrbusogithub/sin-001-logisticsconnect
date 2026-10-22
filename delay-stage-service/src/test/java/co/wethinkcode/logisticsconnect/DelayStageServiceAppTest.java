@@ -11,4 +11,10 @@ public class DelayStageServiceAppTest {
         // Stage zero is the default when no delay has been recorded.
         assertTrue(DelayStageServiceApp.isValidStage(0));
     }
+
+    @Test
+    void acceptsStageEight() {
+        // Eight is the highest supported delay stage.
+        assertTrue(DelayStageServiceApp.isValidStage(8));
+    }
 }
