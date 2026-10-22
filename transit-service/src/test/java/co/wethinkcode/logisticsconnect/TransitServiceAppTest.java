@@ -62,4 +62,11 @@ public class TransitServiceAppTest {
                 () -> TransitServiceApp.calculateEtaMinutes(
                         Integer.MAX_VALUE, 15, 1));
     }
+
+    @Test
+    void normalizesHubIds() {
+        // Transit must use the same hub ID format as the other services.
+        assertEquals("H-501",
+                TransitServiceApp.normalizeHubId(" h-501 "));
+    }
 }

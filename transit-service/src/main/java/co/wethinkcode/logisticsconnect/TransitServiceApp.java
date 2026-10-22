@@ -16,6 +16,10 @@ public class TransitServiceApp {
     public static int calculateEtaMinutes(int i, int i1, int i2) {
         return 0;
     }
+
+    public static String normalizeHubId(String s) {
+        return null;
+    }
 }
 
 // MQ TODO: subscribes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.logisticsconnect.mq.MqConfig)
