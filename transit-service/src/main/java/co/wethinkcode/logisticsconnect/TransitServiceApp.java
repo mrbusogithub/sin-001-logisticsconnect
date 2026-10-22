@@ -37,9 +37,30 @@ public class TransitServiceApp {
             .build();
 
     public static void main(String[] args) {
-        Javalin app = Javalin.create().start(7053);
+        // These values can be changed through environment variables.
+        String hubServiceUrl = System.getenv().getOrDefault(
+                "HUB_SERVICE_URL", DEFAULT_HUB_URL);
+        String delayServiceUrl = System.getenv().getOrDefault(
+                "DELAY_STAGE_SERVICE_URL", DEFAULT_DELAY_URL);
 
-        app.get("/health", ctx -> ctx.result("OK"));
+        // Default ETA is 120 minutes, plus 15 minutes for each delay stage.
+        int baseDurationMinutes = readNonNegativeSetting(
+                "TRANSIT_BASE_DURATION_MINUTES", 120);
+        int minutesPerStage = readNonNegativeSetting(
+                "TRANSIT_MINUTES_PER_STAGE", 15);
+
+        int port = Integer.parseInt(
+                System.getenv().getOrDefault("TRANSIT_SERVICE_PORT", "7053"));
+
+        Javalin app = Javalin.create().start(port);
+
+        // Show the current ETA configuration as part of the health response.
+        app.get("/health", ctx -> ctx.json(Map.of(
+                "status", "UP",
+                "service", "transit-service",
+                "baseDurationMinutes", baseDurationMinutes,
+                "minutesPerStage", minutesPerStage
+        )));
 
         // TODO (Calculates estimated arrival windows based on hub and delay stage.)
         // Add domain endpoints for transit-service here.
