@@ -25,4 +25,10 @@ public class DelayStageServiceAppTest {
             assertTrue(DelayStageServiceApp.isValidStage(stage));
         }
     }
+
+    @Test
+    void rejectsNegativeStage() {
+        // A negative stage is outside the permitted range.
+        assertFalse(DelayStageServiceApp.isValidStage(-1));
+    }
 }
