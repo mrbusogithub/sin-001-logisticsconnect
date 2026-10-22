@@ -37,4 +37,11 @@ public class DelayStageServiceAppTest {
         // Values greater than eight must not be accepted.
         assertFalse(DelayStageServiceApp.isValidStage(9));
     }
+
+    @Test
+    void normalizesHubIds() {
+        // Delay Stage uses the same hub ID format as the other services.
+        assertEquals("H-501",
+                DelayStageServiceApp.normalizeHubId(" h-501 "));
+    }
 }

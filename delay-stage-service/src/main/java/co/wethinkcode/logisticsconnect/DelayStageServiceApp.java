@@ -16,6 +16,10 @@ public class DelayStageServiceApp {
     public static boolean isValidStage(int i) {
         return false;
     }
+
+    public static String normalizeHubId(String s) {
+        return null;
+    }
 }
 
 // MQ TODO: publishes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.logisticsconnect.mq.MqConfig)
