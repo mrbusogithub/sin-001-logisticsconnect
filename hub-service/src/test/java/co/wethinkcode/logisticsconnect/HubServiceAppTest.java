@@ -18,4 +18,10 @@ public class HubServiceAppTest {
         // A null ID should be handled safely instead of causing an exception.
         assertEquals("", HubServiceApp.normalizeHubId(null));
     }
+
+    @Test
+    void blankHubIdNormalizesToEmptyString() {
+        // An ID containing only whitespace is treated as blank.
+        assertEquals("", HubServiceApp.normalizeHubId("   "));
+    }
 }
