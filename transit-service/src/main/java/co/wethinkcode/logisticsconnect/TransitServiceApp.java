@@ -23,6 +23,19 @@ import java.util.Map;
 
 public class TransitServiceApp {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    // Default addresses of the services Transit depends on.
+    private static final String DEFAULT_HUB_URL =
+            "http://localhost:7051";
+    private static final String DEFAULT_DELAY_URL =
+            "http://localhost:7052";
+
+    // Reuse this client for outgoing HTTP requests.
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .build();
+
     public static void main(String[] args) {
         Javalin app = Javalin.create().start(7053);
 
