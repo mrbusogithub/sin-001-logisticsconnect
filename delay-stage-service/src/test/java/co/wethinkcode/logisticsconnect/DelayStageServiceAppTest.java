@@ -17,4 +17,12 @@ public class DelayStageServiceAppTest {
         // Eight is the highest supported delay stage.
         assertTrue(DelayStageServiceApp.isValidStage(8));
     }
+
+    @Test
+    void acceptsStagesWithinRange() {
+        // Every whole-number stage from zero through eight is valid.
+        for (int stage = 0; stage <= 8; stage++) {
+            assertTrue(DelayStageServiceApp.isValidStage(stage));
+        }
+    }
 }
