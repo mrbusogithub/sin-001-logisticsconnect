@@ -31,4 +31,10 @@ public class DelayStageServiceAppTest {
         // A negative stage is outside the permitted range.
         assertFalse(DelayStageServiceApp.isValidStage(-1));
     }
+
+    @Test
+    void rejectsStageAboveEight() {
+        // Values greater than eight must not be accepted.
+        assertFalse(DelayStageServiceApp.isValidStage(9));
+    }
 }
