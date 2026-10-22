@@ -111,4 +111,120 @@ public class HubServiceApp {
                 "message", message
         ));
     }
+
+    /**
+     * Holds the hub records loaded from Ingestion.
+     * The map uses a normalised hub ID as its key for fast lookups.
+     */
+    static final class HubDirectory {
+        private final Map<String, JsonNode> hubsById;
+
+        HubDirectory(List<JsonNode> records) {
+            Map<String, JsonNode> indexed = new LinkedHashMap<>();
+
+            for (JsonNode record : records) {
+                JsonNode idNode = record.get("hubId");
+
+                // Every hub needs a usable ID before it can be cached.
+                if (idNode == null || !idNode.isTextual()
+                        || normalizeHubId(idNode.asText()).isBlank()) {
+                    throw new IllegalArgumentException(
+                            "Ingestion returned a hub without a valid hubId.");
+                }
+
+                String id = normalizeHubId(idNode.asText());
+
+                // Do not silently overwrite a hub if the same ID appears twice.
+                if (indexed.putIfAbsent(id, record) != null) {
+                    throw new IllegalArgumentException(
+                            "Ingestion returned duplicate hub ID: " + id);
+                }
+            }
+
+            // Prevent changes to the index after the directory is constructed.
+            this.hubsById = Collections.unmodifiableMap(indexed);
+        }
+
+        /**
+         * Requests the cleaned hub list from Ingestion and builds the cache.
+         */
+        static HubDirectory load(String ingestionUrl) {
+            // Remove trailing slashes to avoid creating a URL with "//hubs".
+            String url = ingestionUrl.replaceAll("/+$", "") + "/hubs";
+
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(3))
+                    .build();
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+
+            try {
+                HttpResponse<String> response = client.send(
+                        request, HttpResponse.BodyHandlers.ofString());
+
+                // Only successful HTTP responses can be used as hub data.
+                if (response.statusCode() < 200
+                        || response.statusCode() >= 300) {
+                    throw new IllegalStateException(
+                            "Ingestion returned HTTP "
+                                    + response.statusCode());
+                }
+
+                JsonNode root = JSON.readTree(response.body());
+
+                // The ingestion contract requires a JSON array of hubs.
+                if (root == null || !root.isArray()) {
+                    throw new IllegalStateException(
+                            "Ingestion /hubs must return a JSON array.");
+                }
+
+                List<JsonNode> records = new ArrayList<>();
+                root.forEach(records::add);
+
+                // An empty cache could make every valid hub appear missing.
+                if (records.isEmpty()) {
+                    throw new IllegalStateException(
+                            "Ingestion returned no hubs; refusing to start.");
+                }
+
+                return new HubDirectory(records);
+
+            } catch (IOException e) {
+                // Covers network errors and JSON parsing errors.
+                throw new IllegalStateException(
+                        "Could not parse hub data from " + url, e);
+
+            } catch (InterruptedException e) {
+                // Restore the interrupt flag so the interruption is not lost.
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                        "Interrupted while loading hubs from " + url, e);
+
+            } catch (IllegalArgumentException e) {
+                // Includes an invalid URL or invalid hub records.
+                throw new IllegalStateException(
+                        "Invalid ingestion URL or hub data: " + e.getMessage(),
+                        e);
+            }
+        }
+
+        /**
+         * Returns a read-only list of all cached hubs.
+         */
+        List<JsonNode> all() {
+            return List.copyOf(hubsById.values());
+        }
+
+        /**
+         * Finds a hub using a normalised ID.
+         * Returns null when the ID is not present in the cache.
+         */
+        JsonNode find(String hubId) {
+            return hubsById.get(normalizeHubId(hubId));
+        }
+    }
 }
