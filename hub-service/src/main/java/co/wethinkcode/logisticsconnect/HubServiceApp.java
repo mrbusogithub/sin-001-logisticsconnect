@@ -227,4 +227,5 @@ public class HubServiceApp {
             return hubsById.get(normalizeHubId(hubId));
         }
     }
+
 }
