@@ -19,4 +19,11 @@ public class TransitServiceAppTest {
         assertEquals(165,
                 TransitServiceApp.calculateEtaMinutes(120, 15, 3));
     }
+
+    @Test
+    void calculatesEtaForMaximumStage() {
+        // Eight stages add 120 minutes, giving a total of 240 minutes.
+        assertEquals(240,
+                TransitServiceApp.calculateEtaMinutes(120, 15, 8));
+    }
 }
