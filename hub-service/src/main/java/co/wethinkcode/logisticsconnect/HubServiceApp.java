@@ -17,8 +17,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static jdk.internal.org.jline.utils.Log.error;
-
 /**
  * Provides hub information to other LogisticsConnect services.
  *
@@ -98,5 +96,19 @@ public class HubServiceApp {
             return "";
         }
         return hubId.trim().toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Sends a consistent JSON structure for API errors.
+     */
+    private static void error(
+            io.javalin.http.Context ctx,
+            int status,
+            String code,
+            String message) {
+        ctx.status(status).json(Map.of(
+                "error", code,
+                "message", message
+        ));
     }
 }
