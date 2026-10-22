@@ -27,6 +27,9 @@ import java.util.Map;
 
 public class HubServiceApp {
 
+    // Jackson converts JSON responses into objects we can work with.
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     public static void main(String[] args) {
         Javalin app = Javalin.create().start(7051);
 
