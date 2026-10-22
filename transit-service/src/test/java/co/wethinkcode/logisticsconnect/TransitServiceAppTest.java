@@ -33,4 +33,11 @@ public class TransitServiceAppTest {
         assertEquals(95,
                 TransitServiceApp.calculateEtaMinutes(50, 15, 3));
     }
+
+    @Test
+    void rejectsNegativeBaseDuration() {
+        // A negative base duration is not a valid ETA configuration.
+        assertThrows(IllegalArgumentException.class,
+                () -> TransitServiceApp.calculateEtaMinutes(-1, 15, 2));
+    }
 }
