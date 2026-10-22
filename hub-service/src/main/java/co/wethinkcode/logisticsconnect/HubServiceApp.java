@@ -12,4 +12,8 @@ public class HubServiceApp {
         // TODO (Serves provinces and sorting centers (place-name source of truth).)
         // Add domain endpoints for hub-service here.
     }
+
+    public static String normalizeHubId(String s) {
+        return null;
+    }
 }
