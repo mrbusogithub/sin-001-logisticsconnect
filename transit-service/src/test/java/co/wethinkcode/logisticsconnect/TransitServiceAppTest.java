@@ -40,4 +40,26 @@ public class TransitServiceAppTest {
         assertThrows(IllegalArgumentException.class,
                 () -> TransitServiceApp.calculateEtaMinutes(-1, 15, 2));
     }
+
+    @Test
+    void rejectsNegativeMinutesPerStage() {
+        // Each additional stage must not reduce the ETA.
+        assertThrows(IllegalArgumentException.class,
+                () -> TransitServiceApp.calculateEtaMinutes(120, -1, 2));
+    }
+
+    @Test
+    void rejectsStageOutsideRange() {
+        // The calculation must reject a stage the system does not support.
+        assertThrows(IllegalArgumentException.class,
+                () -> TransitServiceApp.calculateEtaMinutes(120, 15, 9));
+    }
+
+    @Test
+    void rejectsIntegerOverflow() {
+        // Large values must raise an error instead of producing a wrong ETA.
+        assertThrows(ArithmeticException.class,
+                () -> TransitServiceApp.calculateEtaMinutes(
+                        Integer.MAX_VALUE, 15, 1));
+    }
 }
