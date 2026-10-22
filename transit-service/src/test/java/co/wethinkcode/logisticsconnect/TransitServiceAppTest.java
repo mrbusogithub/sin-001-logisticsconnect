@@ -26,4 +26,11 @@ public class TransitServiceAppTest {
         assertEquals(240,
                 TransitServiceApp.calculateEtaMinutes(120, 15, 8));
     }
+
+    @Test
+    void supportsCustomEtaConfiguration() {
+        // The calculation should also work with configuration other than defaults.
+        assertEquals(95,
+                TransitServiceApp.calculateEtaMinutes(50, 15, 3));
+    }
 }
