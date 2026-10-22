@@ -89,7 +89,14 @@ public class HubServiceApp {
         });
     }
 
-    public static String normalizeHubId(String s) {
-        return null;
+    /**
+     * Trims whitespace and converts IDs to uppercase.
+     * This lets "h-501", "H-501", and " H-501 " match the same hub.
+     */
+    public static String normalizeHubId(String hubId) {
+        if (hubId == null) {
+            return "";
+        }
+        return hubId.trim().toUpperCase(Locale.ROOT);
     }
 }
