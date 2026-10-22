@@ -12,6 +12,10 @@ public class TransitServiceApp {
         // TODO (Calculates estimated arrival windows based on hub and delay stage.)
         // Add domain endpoints for transit-service here.
     }
+
+    public static int calculateEtaMinutes(int i, int i1, int i2) {
+        return 0;
+    }
 }
 
 // MQ TODO: subscribes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.logisticsconnect.mq.MqConfig)
