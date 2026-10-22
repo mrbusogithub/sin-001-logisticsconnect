@@ -12,4 +12,11 @@ public class TransitServiceAppTest {
         assertEquals(120,
                 TransitServiceApp.calculateEtaMinutes(120, 15, 0));
     }
+
+    @Test
+    void calculatesEtaForStageThree() {
+        // Three stages add 45 minutes to the 120-minute base duration.
+        assertEquals(165,
+                TransitServiceApp.calculateEtaMinutes(120, 15, 3));
+    }
 }
