@@ -12,4 +12,10 @@ public class HubServiceAppTest {
         assertEquals("H-501",
                 HubServiceApp.normalizeHubId("  h-501 "));
     }
+
+    @Test
+    void nullHubIdNormalizesToEmptyString() {
+        // A null ID should be handled safely instead of causing an exception.
+        assertEquals("", HubServiceApp.normalizeHubId(null));
+    }
 }
