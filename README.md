@@ -28,8 +28,28 @@ cleanup through synchronous REST calls to asynchronous MQ decoupling and alertin
 Plus [`common/`](common) (no port) — the shared ActiveMQ broker and MQ config notes
 for `package-status-topic`: Package status updates move from latency-driven RPC to bandwidth-driven messaging.
 
-**Status:** scaffold only — build files, Javalin bootstrap, and TODOs are in place; no
-business logic has been implemented yet.
+**Status:** Iteration 1 provides cleaned hub data through Ingestion.
+Iteration 2 implements synchronous REST integration between Hub, Delay Stage,
+and Transit. See [docs/REST-CONTRACTS.md](docs/REST-CONTRACTS.md) for the
+API contracts, configuration, and error handling.
+
+Iteration 2 uses in-memory delay-stage state and synchronous REST calls.
+ActiveMQ decoupling is reserved for Iteration 3.
+
+## Run Iteration 2
+
+Start each service in its own terminal, in this order:
+
+1. `ingestion-service`
+2. `hub-service`
+3. `delay-stage-service`
+4. `transit-service`
+
+For each service, run `mvn package` and then
+`java -jar target/<service-name>.jar` from that service's directory.
+
+See [docs/REST-CONTRACTS.md](docs/REST-CONTRACTS.md) for environment variables,
+API examples, and expected error responses.
 
 ## Your task
 
