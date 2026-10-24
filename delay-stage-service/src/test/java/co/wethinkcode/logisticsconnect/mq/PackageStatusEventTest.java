@@ -55,4 +55,23 @@ public class PackageStatusEventTest {
                 () -> PackageStatusEvent.fromJson(
                         "{\"hubId\":\"H-501\",\"stage\":5}"));
     }
+
+    /**
+     * Verifies that stages outside the supported range of 0 through 8
+     * are rejected.
+     */
+    @Test
+    void rejectsStagesOutsideTheContractRange() {
+        assertThrows(
+                IllegalArgumentException.class,
+                // Stage 9 is outside the contract's allowed range.
+                () -> PackageStatusEvent.fromJson(
+                        """
+                        {
+                          "hubId": "H-501",
+                          "stage": 9,
+                          "timestamp": "2026-07-18T10:15:00Z"
+                        }
+                        """));
+    }
 }
