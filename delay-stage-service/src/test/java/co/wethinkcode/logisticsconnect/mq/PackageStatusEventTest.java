@@ -92,4 +92,18 @@ public class PackageStatusEventTest {
                         }
                         """));
     }
+
+    /**
+     * Verifies that an event cannot identify a hub with a blank ID.
+     */
+    @Test
+    void rejectsBlankHubIds() {
+        assertThrows(
+                IllegalArgumentException.class,
+                // Whitespace alone is not a valid hub identifier.
+                () -> new PackageStatusEvent(
+                        " ",
+                        5,
+                        "2026-07-18T10:15:00Z"));
+    }
 }
