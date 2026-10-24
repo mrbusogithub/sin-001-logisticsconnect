@@ -1,0 +1,81 @@
+name: LogisticsConnect CI
+
+# Run the pipeline for pushes, pull requests, and manual runs.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# CI only needs to read the repository.
+permissions:
+  contents: read
+
+# Avoid running duplicate pipelines for the same branch or pull request.
+concurrency:
+  group: logisticsconnect-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iteration-2-ci:
+    name: Build and test Iteration 2
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Stage 1: Check out the source code.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Stage 2: Install Java 21 and cache Maven dependencies.
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            ingestion-service/pom.xml
+            hub-service/pom.xml
+            delay-stage-service/pom.xml
+            transit-service/pom.xml
+            acceptance-tests/pom.xml
+
+      # Python runs the cross-platform service and smoke-test scripts.
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Stage 3: Compile and package each independent service module.
+      - name: Build service modules
+        run: |
+          mvn -B -f ingestion-service/pom.xml package -DskipTests
+          mvn -B -f hub-service/pom.xml package -DskipTests
+          mvn -B -f delay-stage-service/pom.xml package -DskipTests
+          mvn -B -f transit-service/pom.xml package -DskipTests
+
+      # Stage 4: Run the unit tests for each service.
+      - name: Run service unit tests
+        run: |
+          mvn -B -f ingestion-service/pom.xml test
+          mvn -B -f hub-service/pom.xml test
+          mvn -B -f delay-stage-service/pom.xml test
+          mvn -B -f transit-service/pom.xml test
+
+      # Stage 5: Start the services automatically and run JUnit acceptance tests.
+      - name: Run end-to-end acceptance tests
+        run: python scripts/run-iteration-2-tests.py --mode acceptance
+
+      # Stage 6: Check the REST flow using the Python smoke test.
+      - name: Run REST smoke test
+        run: python scripts/run-iteration-2-tests.py --mode smoke
+
+      # Always preserve startup logs if a service or test fails.
+      - name: Upload service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: iteration-2-service-logs
+          path: target/iteration-2-logs/
+          if-no-files-found: warn
+          retention-days: 7
