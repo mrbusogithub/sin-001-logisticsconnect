@@ -32,4 +32,15 @@ public class PackageStatusEventTest {
         // Ensure serialization does not change the event's deduplication key.
         assertEquals(original.eventKey(), restored.eventKey());
     }
+
+    /**
+     * Verifies that malformed JSON is rejected instead of creating an event.
+     */
+    @Test
+    void rejectsMalformedJson() {
+        assertThrows(
+                Exception.class,
+                // This string is not valid JSON.
+                () -> PackageStatusEvent.fromJson("{not-json"));
+    }
 }
