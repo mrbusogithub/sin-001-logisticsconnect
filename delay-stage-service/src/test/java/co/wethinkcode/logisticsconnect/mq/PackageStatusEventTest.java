@@ -43,4 +43,16 @@ public class PackageStatusEventTest {
                 // This string is not valid JSON.
                 () -> PackageStatusEvent.fromJson("{not-json"));
     }
+
+    /**
+     * Verifies that an event cannot omit a required contract field.
+     */
+    @Test
+    void rejectsMissingRequiredFields() {
+        assertThrows(
+                IllegalArgumentException.class,
+                // The timestamp field is missing from this JSON message.
+                () -> PackageStatusEvent.fromJson(
+                        "{\"hubId\":\"H-501\",\"stage\":5}"));
+    }
 }
