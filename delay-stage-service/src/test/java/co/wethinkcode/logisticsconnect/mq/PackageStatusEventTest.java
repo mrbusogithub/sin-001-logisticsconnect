@@ -74,4 +74,22 @@ public class PackageStatusEventTest {
                         }
                         """));
     }
+
+    /**
+     * Verifies that a timestamp must be a valid ISO-8601 instant.
+     */
+    @Test
+    void rejectsInvalidTimestamps() {
+        assertThrows(
+                IllegalArgumentException.class,
+                // "not-a-date" cannot be parsed as a valid timestamp.
+                () -> PackageStatusEvent.fromJson(
+                        """
+                        {
+                          "hubId": "H-501",
+                          "stage": 5,
+                          "timestamp": "not-a-date"
+                        }
+                        """));
+    }
 }
