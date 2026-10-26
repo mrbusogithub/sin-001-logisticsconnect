@@ -28,4 +28,19 @@ public class AlertEvaluatorTest {
 
         assertFalse(evaluator.shouldAlert(event));
     }
+
+    /**
+     * Verifies the boundary rule: a stage equal to the threshold triggers
+     * an alert because the comparison is inclusive.
+     */
+    @Test
+    void alertsAtTheThresholdBoundary() {
+        AlertEvaluator evaluator = new AlertEvaluator(THRESHOLD);
+
+        // Stage 5 is exactly equal to the configured threshold.
+        PackageStatusEvent event = new PackageStatusEvent(
+                "H-501", 5, "2026-07-18T10:16:00Z");
+
+        assertTrue(evaluator.shouldAlert(event));
+    }
 }
