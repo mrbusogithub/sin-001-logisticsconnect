@@ -44,6 +44,10 @@ class Iteration2AcceptanceTests {
             .connectTimeout(Duration.ofSeconds(3))
             .build();
 
+    private static final String ALERTBOT_URL =
+            setting("alertbot.url", "ALERTBOT_SERVICE_URL",
+                    "http://localhost:7054");
+
     /**
      * Acceptance scenario:
      * Ingestion provides the data, Hub exposes it, Delay Stage stores
@@ -57,6 +61,7 @@ class Iteration2AcceptanceTests {
         assertServiceResponds(HUB_URL, "/health", "Hub");
         assertServiceResponds(DELAY_URL, "/health", "Delay Stage");
         assertServiceResponds(TRANSIT_URL, "/health", "Transit");
+        assertServiceResponds(ALERTBOT_URL, "/health", "AlertBot");
 
         // Step 2: Confirm Hub exposes cleaned data from Ingestion.
         JsonNode hubs = getJson(HUB_URL + "/hubs");
