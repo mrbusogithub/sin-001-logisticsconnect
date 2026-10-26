@@ -96,4 +96,33 @@ public class AlertEvaluatorTest {
                 new PackageStatusEvent(
                         "H-501", 7, "2026-07-18T10:20:00Z")));
     }
+
+    /**
+     * Verifies that unsupported threshold values are rejected.
+     */
+    @Test
+    void rejectsAnInvalidThreshold() {
+        // The highest supported delay stage is 8.
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AlertEvaluator(9));
+    }
+
+    /**
+     * Verifies that invalid event data is rejected before alert evaluation.
+     */
+    @Test
+    void invalidMessageFieldsAreRejectedBeforeEvaluation() {
+        // Stage 9 is outside the supported event range.
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PackageStatusEvent(
+                        "H-501", 9, "2026-07-18T10:21:00Z"));
+
+        // A valid stage does not make an invalid timestamp acceptable.
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PackageStatusEvent(
+                        "H-501", 5, "invalid-timestamp"));
+    }
 }
