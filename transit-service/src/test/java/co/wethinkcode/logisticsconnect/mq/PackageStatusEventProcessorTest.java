@@ -58,4 +58,33 @@ public class PackageStatusEventProcessorTest {
         // The valid stage remains unchanged after the duplicate.
         assertEquals(5, processor.stageFor("H-501"));
     }
+
+    /**
+     * Verifies that an older event cannot overwrite a newer event.
+     */
+    @Test
+    void ignoresAnOlderEventForTheSameHub() {
+        PackageStatusEventProcessor processor =
+                new PackageStatusEventProcessor();
+
+        // This event has the newer timestamp and should be applied first.
+        PackageStatusEvent newer = new PackageStatusEvent(
+                "H-501", 6, "2026-07-18T10:16:00Z");
+
+        // This event arrived later but describes an older state.
+        PackageStatusEvent older = new PackageStatusEvent(
+                "H-501", 3, "2026-07-18T10:15:00Z");
+
+        assertEquals(
+                PackageStatusEventProcessor.Result.APPLIED,
+                processor.process(newer));
+
+        // A stale event should not replace the newer state.
+        assertEquals(
+                PackageStatusEventProcessor.Result.STALE,
+                processor.process(older));
+
+        // The stage must remain at the value from the newer event.
+        assertEquals(6, processor.stageFor("H-501"));
+    }
 }
