@@ -139,3 +139,20 @@ Each service is an independent Maven project. Run its Maven commands from that s
 ## Iteration boundary
 
 Iteration 2 uses REST calls for current delay-stage reads. Delay Stage state is in memory. The transition to publishing and subscribing to `package-status-topic` belongs to Iteration 3.
+
+# LogisticsConnect — Iteration 3 REST Contracts
+
+The implementation now has explicit behaviour for the listed failure cases:
+
+| Case | Expected behaviour |
+| -- | -- |
+| Malformed JSON | Consumer logs and ignores the message |
+| Missing hubId, stage or timestamp | Reject the event |
+| Stage outside 0–8 | Reject the event |
+| Invalid timestamp | Reject the event |
+| Repeated event with identical fields | Ignore the duplicate |
+| Older event arrives after a newer event | Ignore the older event |
+| Broker unavailable when a consumer starts | REST starts; subscriber retries |
+| Broker unavailable during a stage change | Delay Stage returns 503 and leaves the stage unchanged |
+
+The deduplication set and Transit state are in memory. They reset when the relevant service restarts. Persistent messages and durable subscriptions help retain broker events, but they do not by themselves provide a database-backed transaction between the producer's business state and the broker. A transactional outbox would be a possible future improvement if stronger delivery guarantees were required.
