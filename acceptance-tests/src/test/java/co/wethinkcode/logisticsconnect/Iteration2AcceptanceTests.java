@@ -113,7 +113,7 @@ class Iteration2AcceptanceTests {
             );
 
             // Step 5: Transit must call Hub and Delay Stage to calculate ETA.
-            JsonNode eta = getJson(TRANSIT_URL + "/transit/" + HUB_ID);
+            JsonNode eta = awaitTransitStage(HUB_ID, 3);
 
             assertEquals(
                     HUB_ID,
@@ -299,5 +299,33 @@ class Iteration2AcceptanceTests {
         }
 
         return defaultValue;
+    }
+
+    /**
+     * Poll Transit until the JMS event has been applied or the test times out.
+     * This verifies eventual consistency without adding synchronous polling
+     * between the two services themselves.
+     */
+    private static JsonNode awaitTransitStage(
+            String hubId,
+            int expectedStage) throws Exception {
+
+        Instant deadline = Instant.now().plusSeconds(15);
+        JsonNode lastResponse = null;
+
+        while (Instant.now().isBefore(deadline)) {
+            lastResponse = getJson(TRANSIT_URL + "/transit/" + hubId);
+
+            if (lastResponse.path("delayStage").asInt(-1) == expectedStage) {
+                return lastResponse;
+            }
+
+            Thread.sleep(200);
+        }
+
+        fail("Transit did not receive stage " + expectedStage
+                + " within 15 seconds. Last response: " + lastResponse);
+
+        return lastResponse;
     }
 }
