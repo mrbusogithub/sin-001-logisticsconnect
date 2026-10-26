@@ -43,4 +43,18 @@ public class AlertEvaluatorTest {
 
         assertTrue(evaluator.shouldAlert(event));
     }
+
+    /**
+     * Verifies that stages greater than the threshold trigger an alert.
+     */
+    @Test
+    void alertsAboveTheThreshold() {
+        AlertEvaluator evaluator = new AlertEvaluator(THRESHOLD);
+
+        // Stage 8 is above the configured threshold of 5.
+        PackageStatusEvent event = new PackageStatusEvent(
+                "H-501", 8, "2026-07-18T10:17:00Z");
+
+        assertTrue(evaluator.shouldAlert(event));
+    }
 }
