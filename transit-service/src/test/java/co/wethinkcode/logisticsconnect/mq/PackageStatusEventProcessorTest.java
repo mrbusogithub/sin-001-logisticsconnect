@@ -87,4 +87,24 @@ public class PackageStatusEventProcessorTest {
         // The stage must remain at the value from the newer event.
         assertEquals(6, processor.stageFor("H-501"));
     }
+
+    /**
+     * Verifies that malformed JSON is rejected without changing Transit state.
+     */
+    @Test
+    void malformedJsonDoesNotChangeState() {
+        PackageStatusEventProcessor processor =
+                new PackageStatusEventProcessor();
+
+        // This string cannot be parsed as a valid JSON event.
+        assertEquals(
+                PackageStatusEventProcessor.Result.INVALID,
+                processor.processJson("{not-json"));
+
+        // No stage should have been stored for this hub.
+        assertEquals(0, processor.stageFor("H-501"));
+
+        // No hub should be tracked after the invalid event.
+        assertEquals(0, processor.trackedHubCount());
+    }
 }
