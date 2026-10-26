@@ -57,4 +57,21 @@ public class AlertEvaluatorTest {
 
         assertTrue(evaluator.shouldAlert(event));
     }
+
+    /**
+     * Verifies that the same event cannot generate an alert twice.
+     */
+    @Test
+    void doesNotAlertTwiceForTheSameEvent() {
+        AlertEvaluator evaluator = new AlertEvaluator(THRESHOLD);
+
+        PackageStatusEvent event = new PackageStatusEvent(
+                "H-501", 5, "2026-07-18T10:18:00Z");
+
+        // The first valid delivery should generate an alert decision.
+        assertTrue(evaluator.shouldAlert(event));
+
+        // The duplicate should be ignored.
+        assertFalse(evaluator.shouldAlert(event));
+    }
 }
