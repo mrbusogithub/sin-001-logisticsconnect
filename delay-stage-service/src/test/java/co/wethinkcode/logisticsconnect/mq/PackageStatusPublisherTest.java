@@ -146,4 +146,37 @@ public class PackageStatusPublisherTest {
                 event.eventKey(),
                 textMessage.getStringProperty("eventKey"));
     }
+
+    /**
+     * Verifies that publication failure is reported when no broker is
+     * listening at the configured address.
+     */
+    @Test
+    void reportsFailureWhenTheBrokerIsUnavailable() throws Exception {
+        int unavailablePort;
+
+        /*
+         * Reserve an available port temporarily.
+         * Closing the socket releases it, leaving no listener at that port.
+         */
+        try (ServerSocket socket = new ServerSocket(0)) {
+            unavailablePort = socket.getLocalPort();
+        }
+
+        // Point the publisher to the port where no broker is listening.
+        PackageStatusPublisher publisher = new PackageStatusPublisher(
+                "tcp://127.0.0.1:" + unavailablePort,
+                TOPIC);
+
+        // Use a valid event so the test isolates broker connectivity failure.
+        PackageStatusEvent event = new PackageStatusEvent(
+                "H-501",
+                5,
+                "2026-07-18T10:15:00Z");
+
+        // The publisher should expose the connection failure to its caller.
+        assertThrows(
+                PackageStatusPublisher.PublishException.class,
+                () -> publisher.publish(event));
+    }
 }
