@@ -74,4 +74,26 @@ public class AlertEvaluatorTest {
         // The duplicate should be ignored.
         assertFalse(evaluator.shouldAlert(event));
     }
+
+    /**
+     * Verifies that the alert threshold can be changed and that its
+     * inclusive boundary behaviour remains consistent.
+     */
+    @Test
+    void allowsAValidCustomThreshold() {
+        // Use stage 7 as a custom threshold instead of the default 5.
+        AlertEvaluator evaluator = new AlertEvaluator(7);
+
+        assertEquals(7, evaluator.getThreshold());
+
+        // Stage 6 is below the new threshold.
+        assertFalse(evaluator.shouldAlert(
+                new PackageStatusEvent(
+                        "H-501", 6, "2026-07-18T10:19:00Z")));
+
+        // Stage 7 equals the new threshold and should trigger an alert.
+        assertTrue(evaluator.shouldAlert(
+                new PackageStatusEvent(
+                        "H-501", 7, "2026-07-18T10:20:00Z")));
+    }
 }
