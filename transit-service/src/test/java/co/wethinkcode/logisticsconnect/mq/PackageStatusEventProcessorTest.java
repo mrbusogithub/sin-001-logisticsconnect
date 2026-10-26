@@ -107,4 +107,22 @@ public class PackageStatusEventProcessorTest {
         // No hub should be tracked after the invalid event.
         assertEquals(0, processor.trackedHubCount());
     }
+
+    /**
+     * Verifies that missing required fields are handled safely.
+     */
+    @Test
+    void missingFieldsDoNotChangeState() {
+        PackageStatusEventProcessor processor =
+                new PackageStatusEventProcessor();
+
+        // The timestamp is missing, so this is not a valid contract message.
+        assertEquals(
+                PackageStatusEventProcessor.Result.INVALID,
+                processor.processJson(
+                        "{\"hubId\":\"H-501\",\"stage\":5}"));
+
+        // Invalid messages must not create or update hub state.
+        assertEquals(0, processor.trackedHubCount());
+    }
 }
