@@ -12,6 +12,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -332,5 +334,106 @@ class Iteration2AcceptanceTests {
                 + " within 15 seconds. Last response: " + lastResponse);
 
         return lastResponse;
+    }
+
+    /**
+     * Verifies that a critical stage is published, consumed by Transit, and
+     * turned into a simulated AlertBot notification without synchronous polling.
+     */
+    @Test
+    void criticalDelayIsDeliveredToTransitAndAlertBot() throws Exception {
+        // Save the current value so the test does not unnecessarily leave
+        // the service in a different state.
+        JsonNode previousResponse =
+                getJson(DELAY_URL + "/delay-stage/" + HUB_ID);
+
+        int previousStage = previousResponse.path("stage").asInt(-1);
+
+        assertTrue(
+                previousStage >= 0 && previousStage <= 8,
+                "The stored stage must be between 0 and 8.");
+
+        // Always move to another stage first. This ensures that the subsequent
+        // transition to stage 5 is a real change and produces a fresh event.
+        int intermediateStage = previousStage == 4 ? 3 : 4;
+
+        try {
+            postStage(HUB_ID, intermediateStage);
+
+            // Transit updates asynchronously after the topic event arrives.
+            awaitTransitStage(HUB_ID, intermediateStage);
+
+            // Save the producer's event timestamp to identify this exact alert.
+            JsonNode stageUpdate = postStage(HUB_ID, 5);
+            String eventTimestamp =
+                    stageUpdate.path("eventTimestamp").asText();
+
+            assertFalse(
+                    eventTimestamp.isBlank(),
+                    "A changed stage should return its event timestamp.");
+
+            JsonNode eta = awaitTransitStage(HUB_ID, 5);
+
+            // Default ETA configuration: 120 + (5 * 15) = 195 minutes.
+            assertEquals(5, eta.path("delayStage").asInt(-1));
+            assertEquals(195, eta.path("etaMinutes").asInt(-1));
+            assertEquals("PT3H15M", eta.path("etaDuration").asText());
+
+            JsonNode alert = awaitAlertEvent(
+                    HUB_ID,
+                    5,
+                    eventTimestamp);
+
+            assertEquals(HUB_ID, alert.path("hubId").asText());
+            assertEquals(5, alert.path("stage").asInt(-1));
+            assertEquals(eventTimestamp, alert.path("timestamp").asText());
+            assertTrue(alert.path("simulated").asBoolean());
+
+        } finally {
+            // Restore the original stage even if an assertion fails.
+            postStage(HUB_ID, previousStage);
+        }
+    }
+
+    /**
+     * Waits for AlertBot to expose the simulated alert for this exact event.
+     * Matching the timestamp avoids accidentally passing because an older
+     * stage-5 alert is still in the in-memory alert history.
+     */
+    private static JsonNode awaitAlertEvent(
+            String hubId,
+            int stage,
+            String eventTimestamp) throws Exception {
+
+        Instant deadline = Instant.now().plusSeconds(15);
+
+        while (Instant.now().isBefore(deadline)) {
+            JsonNode alerts = getJson(ALERTBOT_URL + "/alerts");
+
+            if (alerts.isArray()) {
+                for (JsonNode alert : alerts) {
+                    boolean matchesHub =
+                            hubId.equals(alert.path("hubId").asText());
+
+                    boolean matchesStage =
+                            alert.path("stage").asInt(-1) == stage;
+
+                    boolean matchesTimestamp =
+                            eventTimestamp.equals(
+                                    alert.path("timestamp").asText());
+
+                    if (matchesHub && matchesStage && matchesTimestamp) {
+                        return alert;
+                    }
+                }
+            }
+
+            Thread.sleep(200);
+        }
+
+        fail("AlertBot did not expose the expected alert for event "
+                + eventTimestamp);
+
+        return null;
     }
 }
