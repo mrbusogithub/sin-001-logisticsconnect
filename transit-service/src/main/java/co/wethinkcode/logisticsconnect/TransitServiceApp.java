@@ -14,6 +14,10 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
 
+import co.wethinkcode.logisticsconnect.mq.MqConfig;
+import co.wethinkcode.logisticsconnect.mq.PackageStatusConsumer;
+import co.wethinkcode.logisticsconnect.mq.PackageStatusEventProcessor;
+
 /**
  * Calculates an estimated arrival time for a hub.
  *
@@ -28,8 +32,6 @@ public class TransitServiceApp {
     // Default addresses of the services Transit depends on.
     private static final String DEFAULT_HUB_URL =
             "http://localhost:7051";
-    private static final String DEFAULT_DELAY_URL =
-            "http://localhost:7052";
 
     // Reuse this client for outgoing HTTP requests.
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -40,8 +42,25 @@ public class TransitServiceApp {
         // These values can be changed through environment variables.
         String hubServiceUrl = System.getenv().getOrDefault(
                 "HUB_SERVICE_URL", DEFAULT_HUB_URL);
-        String delayServiceUrl = System.getenv().getOrDefault(
-                "DELAY_STAGE_SERVICE_URL", DEFAULT_DELAY_URL);
+
+        // This state is updated by JMS events, not by REST calls to Delay Stage.
+        PackageStatusEventProcessor eventProcessor =
+                new PackageStatusEventProcessor();
+
+        PackageStatusConsumer eventConsumer = new PackageStatusConsumer(
+                event -> eventProcessor.process(event),
+                System.getenv().getOrDefault(
+                        "TRANSIT_JMS_CLIENT_ID",
+                        "logisticsconnect-transit"),
+                System.getenv().getOrDefault(
+                        "TRANSIT_JMS_SUBSCRIPTION",
+                        "transit-package-status"));
+
+        // The consumer connects in the background, allowing REST to start first.
+        eventConsumer.start();
+
+        Runtime.getRuntime().addShutdownHook(
+                new Thread(eventConsumer::close));
 
         // Default ETA is 120 minutes, plus 15 minutes for each delay stage.
         int baseDurationMinutes = readNonNegativeSetting(
@@ -59,7 +78,9 @@ public class TransitServiceApp {
                 "status", "UP",
                 "service", "transit-service",
                 "baseDurationMinutes", baseDurationMinutes,
-                "minutesPerStage", minutesPerStage
+                "minutesPerStage", minutesPerStage,
+                "messageConsumerConnected", eventConsumer.isConnected(),
+                "trackedHubCount", eventProcessor.trackedHubCount()
         )));
 
         // TODO (Calculates estimated arrival windows based on hub and delay stage.)
@@ -80,7 +101,10 @@ public class TransitServiceApp {
                 JsonNode hub = getHub(hubServiceUrl, hubId);
 
                 // Step 2: get the current delay stage from the Delay Stage Service.
-                int stage = getStage(delayServiceUrl, hubId);
+                // The current delay stage comes from Transit's event-derived state.
+                int stage = eventProcessor.stageFor(hubId);
+
+                String eventTimestamp = eventProcessor.timestampFor(hubId);
 
                 // Step 3: calculate the ETA using the configured values.
                 int etaMinutes = calculateEtaMinutes(
@@ -100,7 +124,8 @@ public class TransitServiceApp {
                         "minutesPerStage", minutesPerStage,
                         "etaMinutes", etaMinutes,
                         "etaDuration", Duration.ofMinutes(etaMinutes).toString(),
-                        "etaAt", etaAt.toString()
+                        "etaAt", etaAt.toString(),
+                        "delayEventTimestamp", eventTimestamp
                 ));
 
             } catch (ApiException e) {
@@ -191,34 +216,6 @@ public class TransitServiceApp {
         }
 
         return hub;
-    }
-
-    /**
-     * Requests and validates the current delay stage.
-     */
-    private static int getStage(String delayServiceUrl, String hubId) {
-        String url = delayServiceUrl.replaceAll("/+$", "")
-                + "/delay-stage/" + hubId;
-        JsonNode response = getJson(url, "Delay Stage Service");
-
-        // The stage must be a whole number that Java can represent as an int.
-        if (!response.isObject()
-                || !response.has("stage")
-                || !response.get("stage").isIntegralNumber()
-                || !response.get("stage").canConvertToInt()) {
-            throw new ApiException(502, "INVALID_DELAY_RESPONSE",
-                    "Delay Stage Service returned an invalid stage.");
-        }
-
-        int stage = response.get("stage").asInt();
-
-        // Do not calculate an ETA from an invalid upstream stage.
-        if (stage < 0 || stage > 8) {
-            throw new ApiException(502, "INVALID_DELAY_RESPONSE",
-                    "Delay Stage Service returned a stage outside 0 to 8.");
-        }
-
-        return stage;
     }
 
     /**
