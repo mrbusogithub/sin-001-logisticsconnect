@@ -13,6 +13,8 @@ import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.jms.Topic;
 
+import java.net.ServerSocket;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**

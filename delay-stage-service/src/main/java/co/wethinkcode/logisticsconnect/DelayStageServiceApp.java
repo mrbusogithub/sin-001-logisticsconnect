@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import co.wethinkcode.logisticsconnect.mq.PackageStatusEvent;
+import co.wethinkcode.logisticsconnect.mq.PackageStatusPublisher;
+
 /**
  * Stores and returns the current delay stage for each hub.
  *
@@ -43,6 +46,10 @@ public class DelayStageServiceApp {
             .build();
 
     public static void main(String[] args) {
+
+        // The publisher connects only when a stage change needs to be sent.
+        PackageStatusPublisher eventPublisher = new PackageStatusPublisher();
+
         // The Hub Service address can be configured for different environments.
         String hubServiceUrl = System.getenv().getOrDefault(
                 "HUB_SERVICE_URL", DEFAULT_HUB_URL);
@@ -85,7 +92,7 @@ public class DelayStageServiceApp {
             }
         });
 
-        // Validate a new stage and save it for the requested hub.
+        // Validate a new stage, publish a real state change, and then store it.
         app.post("/delay-stage/{hubId}", ctx -> {
             String hubId = normalizeHubId(ctx.pathParam("hubId"));
 
@@ -100,13 +107,12 @@ public class DelayStageServiceApp {
             // Invalid JSON should produce a client error, not crash the route.
             try {
                 body = JSON.readTree(ctx.body());
-            } catch (IOException e) {
+            } catch (IOException exception) {
                 error(ctx, 400, "INVALID_JSON",
                         "Request body must contain valid JSON.");
                 return;
             }
 
-            // The stage must exist in the body and be a whole number.
             if (body == null || !body.has("stage")
                     || !body.get("stage").isIntegralNumber()
                     || !body.get("stage").canConvertToInt()) {
@@ -117,7 +123,7 @@ public class DelayStageServiceApp {
 
             int stage = body.get("stage").asInt();
 
-            // Reject stages outside the supported range.
+            // Do not publish or update state for an invalid stage.
             if (!isValidStage(stage)) {
                 error(ctx, 400, "INVALID_STAGE",
                         "Stage must be an integer between 0 and 8.");
@@ -125,19 +131,61 @@ public class DelayStageServiceApp {
             }
 
             try {
-                // Check hub existence before changing the stored value.
+                // Keep the existing REST contract: the hub must exist first.
                 requireKnownHub(hubServiceUrl, hubId);
 
-                stages.put(hubId, stage);
+                /*
+                 * Serialize changes inside this process. This prevents two concurrent
+                 * requests from reading the same previous stage and publishing
+                 * misleading updates out of order.
+                 */
+                synchronized (stages) {
+                    int previousStage = stages.getOrDefault(hubId, 0);
 
-                ctx.json(Map.of(
-                        "hubId", hubId,
-                        "stage", stage,
-                        "message", "Delay stage updated."
-                ));
+                    // Repeatedly setting the same value is not a state change.
+                    if (previousStage == stage) {
+                        ctx.json(Map.of(
+                                "hubId", hubId,
+                                "stage", stage,
+                                "changed", false,
+                                "message", "Delay stage was already set."
+                        ));
+                        return;
+                    }
 
-            } catch (ApiException e) {
-                error(ctx, e.status, e.code, e.getMessage());
+                    PackageStatusEvent event =
+                            PackageStatusEvent.create(hubId, stage);
+
+                    try {
+                        // Publish before committing the in-memory state. If sending
+                        // fails, a client can retry the requested stage change.
+                        eventPublisher.publish(event);
+                    } catch (PackageStatusPublisher.PublishException exception) {
+                        System.err.println(
+                                "ActiveMQ publish failed: "
+                                        + exception.getMessage());
+
+                        error(ctx, 503, "MESSAGE_BROKER_UNAVAILABLE",
+                                "The stage was not updated because the event "
+                                        + "could not be published.");
+                        return;
+                    }
+
+                    // Only store the new value once publication succeeds.
+                    stages.put(hubId, stage);
+
+                    ctx.json(Map.of(
+                            "hubId", hubId,
+                            "stage", stage,
+                            "changed", true,
+                            "eventTimestamp", event.getTimestamp(),
+                            "message", "Delay stage updated and event published."
+                    ));
+                }
+
+            } catch (ApiException exception) {
+                error(ctx, exception.status, exception.code,
+                        exception.getMessage());
             }
         });
     }
