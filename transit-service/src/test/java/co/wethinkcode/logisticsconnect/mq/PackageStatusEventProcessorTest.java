@@ -125,4 +125,52 @@ public class PackageStatusEventProcessorTest {
         // Invalid messages must not create or update hub state.
         assertEquals(0, processor.trackedHubCount());
     }
+
+    /**
+     * Verifies that a stage outside the allowed range is rejected.
+     */
+    @Test
+    void invalidStageDoesNotChangeState() {
+        PackageStatusEventProcessor processor =
+                new PackageStatusEventProcessor();
+
+        // Stage 99 is outside the documented range of 0 through 8.
+        assertEquals(
+                PackageStatusEventProcessor.Result.INVALID,
+                processor.processJson(
+                        """
+                        {
+                          "hubId": "H-501",
+                          "stage": 99,
+                          "timestamp": "2026-07-18T10:15:00Z"
+                        }
+                        """));
+
+        // The rejected event must not be stored.
+        assertEquals(0, processor.trackedHubCount());
+    }
+
+    /**
+     * Verifies that an event with an invalid timestamp cannot update state.
+     */
+    @Test
+    void invalidTimestampDoesNotChangeState() {
+        PackageStatusEventProcessor processor =
+                new PackageStatusEventProcessor();
+
+        // "not-a-date" is not a valid ISO-8601 instant.
+        assertEquals(
+                PackageStatusEventProcessor.Result.INVALID,
+                processor.processJson(
+                        """
+                        {
+                          "hubId": "H-501",
+                          "stage": 5,
+                          "timestamp": "not-a-date"
+                        }
+                        """));
+
+        // The processor must ignore the invalid event.
+        assertEquals(0, processor.trackedHubCount());
+    }
 }
