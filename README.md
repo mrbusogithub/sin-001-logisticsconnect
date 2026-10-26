@@ -34,7 +34,7 @@ and Transit. See [docs/REST-CONTRACTS.md](docs/REST-CONTRACTS.md) for the
 API contracts, configuration, and error handling.
 
 Iteration 2 uses in-memory delay-stage state and synchronous REST calls.
-ActiveMQ decoupling is reserved for Iteration 3.
+Stage changes are published to ActiveMQ
 
 ## Run Iteration 2
 
