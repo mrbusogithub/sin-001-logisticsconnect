@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Responsible only for reading CSV rows and converting them into Hub objects.
@@ -65,8 +66,8 @@ public class HubCsvParser {
             return null;
         }
 
-        // Trim spaces and ignore case when interpreting values like YES or True.
-        String normalised = value.trim().toLowerCase();
+        // Use a locale-independent conversion for legacy flag values.
+        String normalised = value.trim().toLowerCase(Locale.ROOT);
 
         // Accept known true/false variants; any unrecognised value is unknown.
         return switch (normalised) {
