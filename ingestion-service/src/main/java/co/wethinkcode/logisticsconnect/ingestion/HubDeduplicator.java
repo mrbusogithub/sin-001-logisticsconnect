@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /**
  * Finds records describing the same hub and keeps one canonical record.
@@ -53,15 +54,34 @@ public class HubDeduplicator {
         return new ArrayList<>(uniqueHubs.values());
     }
 
-    // Province plus sorting-centre name is the chosen identity for a complete record.
+    /**
+     * Builds the identity of a real-world sorting centre.
+     *
+     * Incomplete records are kept separate because there is not enough
+     * reliable information to conclude that they represent the same hub.
+     */
     private String buildIdentityKey(Hub hub) {
-        if (hub.getProvince() == null ||
-                hub.getSortingCenter() == null) {
+        String province = hub.getProvince();
+        String sortingCenter = hub.getSortingCenter();
+
+        // Do not merge records using blank or placeholder identity fields.
+        if (isMissingValue(province) || isMissingValue(sortingCenter)) {
             return null;
         }
 
-        // Separator keeps the two identity fields distinct in the composite key.
-        return hub.getProvince() + "|" + hub.getSortingCenter();
+        // Case-insensitive keys prevent casing differences from hiding duplicates.
+        return normalizeIdentityPart(province)
+                + "|"
+                + normalizeIdentityPart(sortingCenter);
+    }
+
+    /**
+     * Makes identity comparisons insensitive to casing and repeated whitespace.
+     */
+    private String normalizeIdentityPart(String value) {
+        return value.trim()
+                .replaceAll("\\s+", " ")
+                .toLowerCase(Locale.ROOT);
     }
 
     // Resolve conflicting duplicates without depending on input order or active status.
@@ -90,13 +110,16 @@ public class HubDeduplicator {
         return "incomplete-" + index + "-" + hub.getHubId();
     }
 
+    /**
+     * Identifies values that should not be used as reliable identity fields.
+     */
     private boolean isMissingValue(String value) {
         if (value == null || value.isBlank()) {
             return true;
         }
 
-        return switch (value.trim().toLowerCase()) {
-            case "n/a", "tbd", "unknown", "-", "nan" -> true;
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "n/a", "na", "tbd", "unknown", "-", "nan" -> true;
             default -> false;
         };
     }
