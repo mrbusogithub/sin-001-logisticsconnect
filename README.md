@@ -1,199 +1,509 @@
 # LogisticsConnect
 
-## Overview
+LogisticsConnect is a Java-based logistics integration system that cleans a
+legacy hub dataset, exposes hub and delivery information through REST APIs,
+publishes delay-stage changes using Apache ActiveMQ, and generates simulated
+alerts for critical delays.
 
-Supply chain parcel delivery hub and transit delay tracking.
+The project was developed in four iterations, progressing from data cleaning
+to REST integration, asynchronous messaging and alerting.
 
-Domain entities: hubs, sorting centers, regional districts.
+## 1. Project objectives and achievements
 
-Every class in this repo lives in a single flat package, `co.wethinkcode.logisticsconnect`. LogisticsConnect is built
-as a small set of independent services, following a growth path from simple data
-cleanup through synchronous REST calls to asynchronous MQ decoupling and alerting:
+The original assignment required the following four stages:
 
-1. clean a messy legacy CSV export (`hubs-global.csv`) — handled by **IngestionServiceApp**
-2. serve it up and act on it, via three REST services calling each other directly
-   over HTTP
-3. decouple the relevant services with an ActiveMQ topic (`package-status-topic`) instead of
-   direct calls — shared broker setup lives in [`common/`](common)
-4. raise the alarm on failure — handled by **AlertBotApp**
+| Iteration | Original requirement | Implementation |
+|---|---|---|
+| 1 — Data cleaning | Parse and clean the legacy `hubs-global.csv` dataset, normalize inconsistent values, handle duplicates and expose the cleaned records through REST. | Ingestion parses CSV rows into Java domain objects, normalizes hub IDs and province names, trims and collapses whitespace, normalizes boolean values, handles placeholders and deduplicates records using a deterministic identity rule. |
+| 2 — REST integration | Introduce Hub, Delay Stage and Transit services with explicit HTTP contracts and an ETA calculation. | Hub loads and caches cleaned records from Ingestion. Delay Stage validates and stores delay-stage updates. Transit looks up hub details and calculates ETAs using its configured base duration and stage allowance. |
+| 3 — Event-driven integration | Provision ActiveMQ and replace unnecessary synchronous runtime dependencies with asynchronous messaging. | Delay Stage publishes validated package-status events to `package-status-topic`. Transit subscribes to the topic and updates its local delay state without polling Delay Stage over REST. |
+| 4 — AlertBot | Add another event consumer and demonstrate critical-delay notifications. | AlertBot consumes the same topic and generates a simulated alert when the event stage meets the configured threshold. The default rule is `stage >= 5`. |
 
-| Service | Folder | Port | Role |
-|---|---|---|---|
-| IngestionServiceApp | [`ingestion-service/`](ingestion-service) | 7050 | Parses and cleans `hubs-global.csv` |
-| HubServiceApp | [`hub-service/`](hub-service) | 7051 | Serves provinces and sorting centers (place-name source of truth). |
-| DelayStageServiceApp | [`delay-stage-service/`](delay-stage-service) | 7052 | Tracks the Transit Delay Stage (0-8, e.g. weather shutdowns). |
-| TransitServiceApp | [`transit-service/`](transit-service) | 7053 | Calculates estimated arrival windows based on hub and delay stage. |
-| AlertBotApp | [`alertbot/`](alertbot) | 7054 | posts proactive delay notifications to public transit social media pages (simulated). |
+### Data-cleaning scope
 
-Plus [`common/`](common) (no port) — the shared ActiveMQ broker and MQ config notes
-for `package-status-topic`: Package status updates move from latency-driven RPC to bandwidth-driven messaging.
+The supplied CSV currently contains four columns:
 
-**Status:** Iteration 1 provides cleaned hub data through Ingestion.
-Iteration 2 implements synchronous REST integration between Hub, Delay Stage,
-and Transit. See [docs/REST-CONTRACTS.md](docs/REST-CONTRACTS.md) for the
-API contracts, configuration, and error handling.
+- `hub_id`
+- `Province`
+- `sorting_center`
+- `active`
 
-Iteration 2 uses in-memory delay-stage state and synchronous REST calls.
-Stage changes are published to ActiveMQ
+It contains casing inconsistencies, whitespace variations, duplicate hub/sorting-centre records, different boolean spellings and placeholder values.
 
-## Run Iteration 2
+The supplied file does not contain date or numeric fields, so date normalization and numeric-column validation are not applicable to its current schema.
 
-Start each service in its own terminal, in this order:
+The duplicate-resolution rule uses normalized province and sorting-centre names as the identity. When duplicate records conflict, the smallest normalized hub ID is selected as the canonical record. Records without sufficient identity information are not merged based on guesswork.
 
-1. `ingestion-service`
-2. `hub-service`
-3. `delay-stage-service`
-4. `transit-service`
+## 2. Architecture
 
-For each service, run `mvn package` and then
-`java -jar target/<service-name>.jar` from that service's directory.
-
-See [docs/REST-CONTRACTS.md](docs/REST-CONTRACTS.md) for environment variables,
-API examples, and expected error responses.
-
-## Your task
-
-Implement the four stages below, in order — each one builds on the last, and the
-later stages assume the earlier ones work. Stage 1-3 are required; stage 4 is a
-stretch goal if you have time left.
-
-| Stage | Required? | What "done" looks like | Rough effort |
-|---|---|---|---|
-| 1. Clean `hubs-global.csv` | Required | IngestionServiceApp exposes the cleaned records via REST (see [Integration contracts](#integration-contracts)); every issue category in [ingestion-service/README.md](ingestion-service/README.md#known-data-issues) is handled | ~1-1.5h |
-| 2. Wire up the REST services | Required | hub-service, delay-stage-service, and transit-service each expose real domain endpoints (not just `/health`) and call each other synchronously per the contracts below; `transit-service` can return an ETA for a hub | ~1.5-2h |
-| 3. Decouple with the MQ topic | Required | `delay-stage-service` publishes to `package-status-topic` on stage change; `transit-service` subscribes instead of calling `delay-stage-service` directly; broker runs via `common/docker-compose.yml` | ~1h |
-| 4. AlertBot | Stretch | `alertbot` subscribes to `package-status-topic` and simulates posting an alert when a hub's delay stage crosses a threshold you choose | ~30-45m |
-
-You don't need to match any exact field names, endpoint paths, or message shapes —
-the ones below are illustrative. Favor a working, readable implementation over a
-gold-plated one; partial completion of stage 3 or 4 is fine if 1-2 are solid.
-
-## Integration contracts
-
-Two kinds of integration point exist in this repo: synchronous REST calls (stage 2)
-and the asynchronous MQ topic (stage 3). Field/endpoint names below are illustrative
-— reasonable variations are fine as long as the shape (who calls whom, with what
-kind of payload) is preserved.
-
-### REST (stage 2)
-
-| Caller | Callee | Example | Purpose |
-|---|---|---|---|
-| hub-service | ingestion-service | `GET :7050/hubs` → JSON array of cleaned hub records | hub-service loads its place-name data from the cleaned CSV output instead of re-parsing it itself |
-| transit-service | hub-service | `GET :7051/hubs/{hubId}` → hub/sorting-center details | transit-service needs hub location data to calculate an ETA |
-| transit-service | delay-stage-service | `GET :7052/delay-stage/{hubId}` → `{ "hubId": "H-501", "stage": 3 }` | transit-service needs the current delay stage to calculate an ETA — **this call is replaced by the MQ subscription in stage 3** |
-| (client) | delay-stage-service | `POST :7052/delay-stage/{hubId}` with a body like `{ "stage": 3 }` | the stage/state-change endpoint referenced in [common/README.md](common/README.md) — this is also where the stage-3 MQ publish happens |
-
-### MQ (stage 3) — topic `package-status-topic`
-
-Already documented in detail in [common/README.md](common/README.md): broker URL and
-topic name come from the shared `co.wethinkcode.logisticsconnect.mq.MqConfig` class,
-duplicated into each participating service.
-
-- **Producer:** `delay-stage-service`, on its stage/state-change endpoint above.
-- **Consumers:** `transit-service` (replacing its direct REST call to
-  delay-stage-service) and, for the stretch goal, `alertbot`.
-- **Example message shape:** `{ "hubId": "H-501", "stage": 5, "timestamp": "2026-07-18T10:15:00Z" }`
-
-## Project structure
-
-```
-logisticsconnect/
-├── README.md
-├── .gitignore
-├── ingestion-service/          (port 7050)
-│   ├── pom.xml
-│   ├── README.md
-│   └── src/main/
-│       ├── java/co/wethinkcode/logisticsconnect/IngestionServiceApp.java
-│       └── resources/hubs-global.csv
-├── hub-service/          (port 7051)
-├── delay-stage-service/          (port 7052)
-├── transit-service/          (port 7053)
-├── common/
-│   ├── docker-compose.yml
-│   └── README.md
-└── alertbot/          (port 7054)
+```text
+ Legacy CSV
+     |
+     v
+ Ingestion Service (7050)
+     |
+     | GET /hubs
+     v
+ Hub Service (7051)
+     ^
+     |
+     | REST hub lookup
+     |
+ Transit Service (7053) <------- ActiveMQ Topic -------- Delay Stage Service (7052)
+     ^                                 ^                         |
+     |                                 |                         |
+     | ETA and event-derived stage     |                         |
+     |                                 |                         |
+     +---------------------------------+-------------------------+
+                                       |
+                                       |
+                                 AlertBot (7054)
+                                 Simulated alert
 ```
 
-## Build
+The runtime event flow is:
 
-Requirements: Java 17+, Maven 3.8+, Docker (for the broker in `common/`).
-
-Every folder here (`ingestion-service/`, each domain service, and `alertbot/`) is
-an **independent** Maven project — there is no parent/aggregator pom. Build one at a
-time, e.g.:
-
-```
-cd hub-service
-mvn package
-```
-
-...or build every module in the repo in one pass from the project root:
-
-```
-find . -name pom.xml -execdir mvn -q package \;
-```
-
-## Run
-
-```
-# ingestion
-cd ingestion-service && mvn package && java -jar target/ingestion-service.jar
-
-# domain services, each in its own terminal
-# terminal 1
-cd hub-service && mvn package && java -jar target/hub-service.jar
-# terminal 2
-cd delay-stage-service && mvn package && java -jar target/delay-stage-service.jar
-# terminal 3
-cd transit-service && mvn package && java -jar target/transit-service.jar
-
-# MQ broker (needed once the MQ-aware services above are wired up)
-cd common && docker compose up -d
-
-# alerting
-cd alertbot && mvn package && java -jar target/alertbot.jar
+```text
+Client
+  |
+  | POST /delay-stage/{hubId}
+  v
+Delay Stage Service
+  |
+  | JMS package-status event
+  v
+ActiveMQ: package-status-topic
+  |                         |
+  v                         v
+Transit Service          AlertBot
+  |                         |
+  v                         v
+Updated ETA/state       Simulated notification
 ```
 
-| Service | Port |
+Transit still uses REST to obtain hub details from Hub Service. The current
+delay stage is sourced from the latest valid event received by Transit, rather
+than a synchronous request to Delay Stage.
+
+### Package-status event
+
+The topic carries JSON text messages with this contract:
+
+```json
+{
+  "hubId": "H-501",
+  "stage": 5,
+  "timestamp": "2026-07-18T10:15:00Z"
+}
+```
+
+The required fields are:
+
+- `hubId`: non-blank string, normalized to uppercase.
+- `stage`: integer from 0 through 8, inclusive.
+- `timestamp`: valid ISO-8601 instant.
+
+Consumers reject malformed messages, missing required fields, invalid stages
+and invalid timestamps.
+
+## 3. Services and ports
+
+| Service | Port | Responsibility |
+|---|---:|---|
+| Ingestion Service | 7050 | Parses, cleans and exposes the legacy hub dataset. |
+| Hub Service | 7051 | Loads and caches cleaned hub records and serves hub lookups. |
+| Delay Stage Service | 7052 | Validates delay stages and publishes events when a stage changes. |
+| Transit Service | 7053 | Consumes delay events and calculates estimated arrival times. |
+| AlertBot | 7054 | Consumes delay events and exposes simulated critical-delay alerts. |
+| ActiveMQ Classic | 61616 | Broker connection port (OpenWire). |
+| ActiveMQ web console | 8161 | Local broker administration and inspection. |
+
+The five application services are separate Maven projects. There is no root
+aggregator POM, so the Makefile and Python runner coordinate their builds and
+test execution.
+
+## 4. Repository navigation
+
+| Location | Contents |
 |---|---|
-| IngestionServiceApp (`ingestion-service`) | 7050 |
-| HubServiceApp (`hub-service`) | 7051 |
-| DelayStageServiceApp (`delay-stage-service`) | 7052 |
-| TransitServiceApp (`transit-service`) | 7053 |
-| AlertBotApp (`alertbot`) | 7054 |
+| [`ingestion-service/`](ingestion-service/) | CSV parsing, normalization, deduplication, dataset resource and tests. See [`ingestion-service/README.md`](ingestion-service/README.md). |
+| [`hub-service/`](hub-service/) | Hub directory cache, hub REST endpoints and tests. See [`hub-service/README.md`](hub-service/README.md). |
+| [`delay-stage-service/`](delay-stage-service/) | Delay-stage REST API, ActiveMQ producer, message contract and producer tests. See [`delay-stage-service/README.md`](delay-stage-service/README.md). |
+| [`transit-service/`](transit-service/) | ETA API, event consumer, event-state processor and tests. See [`transit-service/README.md`](transit-service/README.md). |
+| [`alertbot/`](alertbot/) | Alert consumer, threshold evaluator, simulated notifications and tests. See [`alertbot/README.md`](alertbot/README.md). |
+| [`common/`](common/) | ActiveMQ Docker Compose configuration and messaging documentation. See [`common/README.md`](common/README.md). |
+| [`acceptance-tests/`](acceptance-tests/) | JUnit tests against the live REST and messaging system. See [`acceptance-tests/README.md`](acceptance-tests/README.md). |
+| [`docs/REST-CONTRACTS.md`](docs/REST-CONTRACTS.md) | REST endpoints, request/response shapes, JMS event contract, configuration and limitations. |
+| [`scripts/`](scripts/) | Cross-platform Python smoke tests and automatic service/test runners. |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | GitHub Actions build, unit-test and integration pipeline. |
+| [`Makefile`](Makefile) | Short commands for building, testing and cleaning the project. |
 
-## Test
+## 5. Prerequisites
 
-No automated tests exist yet (this is a scaffold). Each running service exposes
-`/health`, so sanity-check manually:
+Install the following tools:
 
+- Java 21
+- Maven 3.8 or later
+- Python 3
+- Docker with Docker Compose
+- GNU Make (optional, for the `make` commands)
+
+The Python scripts use the standard library, so no extra Python packages are
+required.
+
+Run the commands in this README from the repository root.
+
+## 6. Quick start — recommended
+
+The simplest way to demonstrate the system is to run the automated smoke test.
+It builds the services, starts ActiveMQ if needed, starts or reuses the
+services, waits for Transit and AlertBot to connect, and verifies the event
+flow.
+
+### Step 1: See the available commands
+
+```bash
+make help
 ```
-curl http://localhost:7050/health   # -> OK
+
+This prints the Makefile's supported commands and their purposes.
+
+### Step 2: Run the complete event-flow smoke test
+
+```bash
+make smoke-test
 ```
 
-To add real tests to a module, add JUnit 5 and Surefire to its `pom.xml`:
+The runner verifies the five HTTP health endpoints, changes the delay stage,
+waits for Transit to apply the event and calculate an ETA, and checks that
+AlertBot generates a simulated alert at the threshold.
 
-```xml
-<dependency>
-  <groupId>org.junit.jupiter</groupId>
-  <artifactId>junit-jupiter</artifactId>
-  <version>5.10.2</version>
-  <scope>test</scope>
-</dependency>
+The script restores the original stage when it finishes.
+
+### Step 3: Run the automated acceptance tests
+
+```bash
+make acceptance-test
 ```
 
-```xml
-<plugin>
-  <groupId>org.apache.maven.plugins</groupId>
-  <artifactId>maven-surefire-plugin</artifactId>
-  <version>3.2.5</version>
-</plugin>
+This runs the JUnit acceptance tests against the live application services.
+
+### Step 4: Run the unit tests and acceptance tests together
+
+```bash
+make test
 ```
 
-then add tests under that module's `src/test/java/...` and run:
+This runs the module unit tests followed by the live acceptance tests.
+Run `make smoke-test` separately when you also want to verify the full
+event-flow demonstration.
 
+The test runner stops only the application processes and broker it started.
+Already-running services are reused and are not terminated by its cleanup.
+
+## 7. Understanding the Makefile commands
+
+Run `make help` whenever you need a reminder of the available commands.
+
+| Command | Purpose |
+|---|---|
+| `make help` | Displays the development commands. |
+| `make build` | Packages all five application services into runnable JARs. |
+| `make unit-test` | Runs unit tests in each application service. |
+| `make acceptance-test` | Builds/starts the required system components and runs the JUnit acceptance tests. |
+| `make smoke-test` | Starts the required components and verifies the end-to-end event flow. |
+| `make test` | Runs module unit tests followed by the live acceptance tests. |
+| `make clean` | Cleans the independent Maven build outputs. |
+
+GNU Make is optional. From the repository root, the equivalent Python
+integration commands are:
+
+```bash
+python3 scripts/run-iteration-3-4-tests.py --mode acceptance
+python3 scripts/run-iteration-3-4-tests.py --mode smoke
 ```
-mvn test
+
+On Windows, use `python` instead of `python3` if that is the command installed
+on your machine.
+
+To reuse already-built JARs, pass `--skip-build`:
+
+```bash
+python3 scripts/run-iteration-3-4-tests.py --mode smoke --skip-build
 ```
+
+Use that option only after the service JARs have been built successfully.
+
+## 8. Running the application manually
+
+The automated runner is recommended for testing. For a manual demonstration,
+start the broker and services in separate terminals.
+
+### Step 1: Start ActiveMQ
+
+From the repository root:
+
+```bash
+docker compose -f common/docker-compose.yml up -d
+```
+
+Check the broker:
+
+```bash
+docker compose -f common/docker-compose.yml ps
+docker compose -f common/docker-compose.yml logs activemq
+```
+
+The services use `tcp://localhost:61616` by default.
+
+### Step 2: Build each service
+
+From the repository root:
+
+```bash
+mvn -f ingestion-service/pom.xml package
+mvn -f hub-service/pom.xml package
+mvn -f delay-stage-service/pom.xml package
+mvn -f transit-service/pom.xml package
+mvn -f alertbot/pom.xml package
+```
+
+### Step 3: Start the services
+
+Start each command in its own terminal, in this order:
+
+```bash
+java -jar ingestion-service/target/ingestion-service.jar
+```
+
+```bash
+java -jar hub-service/target/hub-service.jar
+```
+
+```bash
+java -jar delay-stage-service/target/delay-stage-service.jar
+```
+
+```bash
+java -jar transit-service/target/transit-service.jar
+```
+
+```bash
+java -jar alertbot/target/alertbot.jar
+```
+
+Wait for the Hub Service to load its records and for Transit and AlertBot to
+report their ActiveMQ subscriptions as connected before demonstrating a stage
+change.
+
+## 9. See the event flow in action
+
+The following example uses sample hub `H-500`.
+
+### Step 1: Check the services
+
+The following endpoints should respond successfully:
+
+- `GET http://localhost:7050/health`
+- `GET http://localhost:7051/health`
+- `GET http://localhost:7052/health`
+- `GET http://localhost:7053/health`
+- `GET http://localhost:7054/health`
+
+Ingestion currently returns plain-text `OK`; the other services expose JSON
+health responses.
+
+### Step 2: Check hub data
+
+```bash
+curl http://localhost:7051/hubs
+```
+
+Look up one hub:
+
+```bash
+curl http://localhost:7051/hubs/H-500
+```
+
+### Step 3: Publish a delay-stage change
+
+Use PowerShell:
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://localhost:7052/delay-stage/H-500" `
+  -ContentType "application/json" `
+  -Body '{"stage":5}'
+```
+
+Or use curl:
+
+```bash
+curl -X POST http://localhost:7052/delay-stage/H-500 \
+  -H "Content-Type: application/json" \
+  -d '{"stage":5}'
+```
+
+A successful real stage change returns its event timestamp. Delay Stage
+publishes the corresponding event to `package-status-topic`.
+
+Setting the same stage again does not create another event.
+
+### Step 4: Check the Transit ETA
+
+```bash
+curl http://localhost:7053/transit/H-500
+```
+
+The demo configuration uses:
+
+```text
+ETA minutes = 120 + (stage * 15)
+```
+
+For stage 5, the expected ETA is 195 minutes, or `PT3H15M`.
+
+Transit may need a short interval to receive and apply the event because
+messaging is asynchronous.
+
+### Step 5: Check AlertBot's simulated notification
+
+```bash
+curl http://localhost:7054/alerts
+```
+
+The default alert rule is:
+
+```text
+stage >= 5
+```
+
+Stage 4 does not trigger an alert; stage 5 does. The alert includes the hub
+ID, stage, event timestamp, threshold, simulated flag and message.
+
+AlertBot also prints a `[SIMULATED ALERT]` line in its application logs.
+No real social-media notification is sent.
+
+## 10. REST and messaging contracts
+
+The full API and configuration reference is maintained in
+[`docs/REST-CONTRACTS.md`](docs/REST-CONTRACTS.md).
+
+Important REST endpoints:
+
+| Service | Endpoint | Purpose |
+|---|---|---|
+| Ingestion | `GET /hubs` | Returns cleaned hub records. |
+| Hub | `GET /hubs` | Returns cached hub records. |
+| Hub | `GET /hubs/{hubId}` | Looks up a hub. |
+| Delay Stage | `GET /delay-stage/{hubId}` | Reads the current delay stage. |
+| Delay Stage | `POST /delay-stage/{hubId}` | Validates and changes a delay stage. |
+| Transit | `GET /transit/{hubId}` | Returns hub details and ETA data. |
+| AlertBot | `GET /alerts` | Returns the retained simulated alerts. |
+
+The event contract is JSON with `hubId`, `stage` and `timestamp`. The topic
+name is configurable but defaults to `package-status-topic`.
+
+## 11. Configuration
+
+The following environment variables have defaults suitable for local
+development:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `INGESTION_SERVICE_URL` | `http://localhost:7050` | Hub's source of cleaned data. |
+| `HUB_SERVICE_URL` | `http://localhost:7051` | Hub lookup address for dependent services. |
+| `ACTIVEMQ_BROKER_URL` | `tcp://localhost:61616` | ActiveMQ broker address. |
+| `PACKAGE_STATUS_TOPIC` | `package-status-topic` | JMS topic. |
+| `ACTIVEMQ_RECONNECT_DELAY_MS` | `5000` | Delay between consumer reconnect attempts. |
+| `TRANSIT_BASE_DURATION_MINUTES` | `120` | Base ETA in minutes. |
+| `TRANSIT_MINUTES_PER_STAGE` | `15` | Added minutes per delay stage. |
+| `ALERT_STAGE_THRESHOLD` | `5` | Inclusive alert threshold, valid range 0–8. |
+
+The producer and both consumers use configuration rather than hard-coded
+service-to-service message addresses.
+
+## 12. Testing and CI
+
+Run all module unit tests:
+
+```bash
+make unit-test
+```
+
+Run live acceptance tests:
+
+```bash
+make acceptance-test
+```
+
+Run the event-flow smoke test:
+
+```bash
+make smoke-test
+```
+
+Run the GitHub Actions workflow by pushing a commit or opening a pull request.
+The workflow builds the modules, runs their unit tests, starts ActiveMQ and
+runs the acceptance and smoke tests.
+
+On local test failure, inspect:
+
+```text
+target/iteration-3-4-logs/
+```
+
+The Python runner writes service logs there to help diagnose startup and
+integration failures.
+
+## 13. Known limitations and design decisions
+
+- Delay Stage state is held in memory and resets when its service restarts.
+- Transit's delay-stage state is derived from events and is held in memory.
+  Before an event has been processed, its default stage is 0.
+- Updates are eventually consistent; the HTTP response from Delay Stage does
+  not guarantee that both consumers have processed the event already.
+- Event deduplication is performed in memory and resets on consumer restart.
+- The design uses persistent JMS messages and durable topic subscriptions,
+  but it does not have a database-backed transactional outbox.
+- AlertBot generates simulated notifications only. It does not connect to an
+  external social-media or notification API.
+- Alert history is limited to the most recent 100 alerts in the running
+  AlertBot process.
+- The current CSV has no date or numeric columns; those normalizations are
+  outside the scope of its present four-column dataset.
+
+These decisions keep the demonstration small and understandable while
+showing the transition from synchronous REST integration to asynchronous
+event-driven integration.
+
+## 14. Final project flow
+
+```text
+Legacy CSV
+    |
+    v
+Ingestion
+    |
+    v
+Hub
+    |
+    +---------------------> Transit (hub lookup over REST)
+    |
+    v
+Delay Stage
+    |
+    v
+ActiveMQ: package-status-topic
+    |                         |
+    v                         v
+Transit                    AlertBot
+    |                         |
+    v                         v
+Updated ETA              Simulated alert
+```
+
+The core objective is to demonstrate a working integration system whose
+services have clear responsibilities, explicit REST and JMS contracts,
+automated tests, a reproducible broker setup and a simple end-to-end demo.
