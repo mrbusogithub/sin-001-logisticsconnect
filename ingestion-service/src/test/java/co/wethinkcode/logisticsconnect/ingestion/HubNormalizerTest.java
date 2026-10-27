@@ -74,4 +74,40 @@ public class HubNormalizerTest {
 
         assertNull(result.getProvince());
     }
+
+    /**
+     * Verifies that known placeholder values are treated as missing data.
+     */
+    @Test
+    void shouldConvertPlaceholderValuesToNull() {
+        Hub input = new Hub(
+                "H-520",
+                "unknown",
+                "N/A",
+                null
+        );
+
+        Hub result = normalizer.normalize(input);
+
+        assertNull(result.getProvince());
+        assertNull(result.getSortingCenter());
+    }
+
+    /**
+     * Verifies that hyphen and casing variants resolve to the canonical
+     * KwaZulu-Natal province name.
+     */
+    @Test
+    void shouldNormalizeKwaZuluNatalVariants() {
+        Hub input = new Hub(
+                "H-521",
+                "kwaZulu-natal",
+                "Durban Harbour",
+                true
+        );
+
+        Hub result = normalizer.normalize(input);
+
+        assertEquals("KwaZulu-Natal", result.getProvince());
+    }
 }

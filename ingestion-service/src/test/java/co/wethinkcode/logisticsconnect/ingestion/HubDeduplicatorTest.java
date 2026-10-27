@@ -130,4 +130,61 @@ public class HubDeduplicatorTest {
 
         assertEquals("H-500", resultOne.get(0).getHubId());
     }
+
+    /**
+     * Verifies that casing and repeated whitespace do not hide duplicate
+     * sorting-centre records.
+     */
+    @Test
+    void shouldDeduplicateIgnoringCasingAndWhitespace() {
+        List<Hub> hubs = List.of(
+                new Hub(
+                        "H-510",
+                        "GAUTENG",
+                        " johannesburg   central ",
+                        false
+                ),
+                new Hub(
+                        "H-500",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        true
+                )
+        );
+
+        List<Hub> result = deduplicator.deduplicate(hubs);
+
+        // Both records describe the same normalized province and centre.
+        assertEquals(1, result.size());
+
+        // The existing canonical-selection rule keeps the smallest ID.
+        assertEquals("H-500", result.get(0).getHubId());
+    }
+
+    /**
+     * Verifies that placeholder identity values cannot cause unrelated
+     * incomplete records to be merged.
+     */
+    @Test
+    void shouldNotMergeRecordsWithPlaceholderIdentityFields() {
+        List<Hub> hubs = List.of(
+                new Hub(
+                        "H-601",
+                        "unknown",
+                        "Pretoria North",
+                        true
+                ),
+                new Hub(
+                        "H-602",
+                        "N/A",
+                        "Pretoria North",
+                        false
+                )
+        );
+
+        List<Hub> result = deduplicator.deduplicate(hubs);
+
+        // Their province values do not establish a reliable identity.
+        assertEquals(2, result.size());
+    }
 }

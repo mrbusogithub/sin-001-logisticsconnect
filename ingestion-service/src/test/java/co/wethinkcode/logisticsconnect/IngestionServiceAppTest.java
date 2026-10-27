@@ -28,5 +28,17 @@ class IngestionServiceAppTest {
                         .anyMatch(hub ->
                                 "H-500".equals(hub.getHubId()))
         );
+
+        // The smallest hub ID should be retained for the Johannesburg duplicate group.
+        assertTrue(
+                hubs.stream().anyMatch(hub ->
+                        "H-500".equals(hub.getHubId())));
+
+        // Duplicate IDs/records should not remain in the cleaned dataset.
+        assertFalse(
+                hubs.stream().anyMatch(hub ->
+                        "H-504".equals(hub.getHubId())
+                                || "H-510".equals(hub.getHubId())
+                                || "H-515".equals(hub.getHubId())));
     }
 }
