@@ -19,10 +19,11 @@ import co.wethinkcode.logisticsconnect.mq.PackageStatusEvent;
 import co.wethinkcode.logisticsconnect.mq.PackageStatusPublisher;
 
 /**
- * Stores and returns the current delay stage for each hub.
+ * Stores the current delay stage for each hub and publishes package-status
+ * events when a valid stage change occurs.
  *
- * In Iteration 2, stages are stored in memory. They will be lost when the
- * service restarts. REST is used here; ActiveMQ integration belongs to Iteration 3.
+ * Stage state is stored in memory for this demonstration and is lost when
+ * the service restarts. The event is published before the new stage is stored.
  */
 
 public class DelayStageServiceApp {
@@ -66,9 +67,6 @@ public class DelayStageServiceApp {
                 "service", "delay-stage-service",
                 "storedHubCount", stages.size()
         )));
-
-        // TODO (Tracks the Transit Delay Stage (0-8, e.g. weather shutdowns).)
-        // Add domain endpoints for delay-stage-service here.
 
         // Return the saved stage, or stage 0 if this hub has no saved stage.
         app.get("/delay-stage/{hubId}", ctx -> {
@@ -295,5 +293,3 @@ public class DelayStageServiceApp {
         }
     }
 }
-
-// MQ TODO: publishes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.logisticsconnect.mq.MqConfig)

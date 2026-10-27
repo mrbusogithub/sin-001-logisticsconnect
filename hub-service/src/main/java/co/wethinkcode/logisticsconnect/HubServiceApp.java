@@ -56,9 +56,6 @@ public class HubServiceApp {
                 "hubCount", directory.all().size()
         )));
 
-        // TODO (Serves provinces and sorting centers (place-name source of truth).)
-        // Add domain endpoints for hub-service here.
-
         // Return every cached hub as a JSON array.
         app.get("/hubs", ctx -> ctx.json(directory.all()));
 

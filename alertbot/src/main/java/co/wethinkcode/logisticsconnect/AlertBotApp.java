@@ -158,5 +158,3 @@ public class AlertBotApp {
         }
     }
 }
-
-// MQ TODO (stretch goal): subscribes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.logisticsconnect.mq.MqConfig)

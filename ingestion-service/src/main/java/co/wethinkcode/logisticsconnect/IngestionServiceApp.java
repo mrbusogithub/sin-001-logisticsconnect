@@ -37,10 +37,6 @@ public class IngestionServiceApp {
         app.get("/hubs", ctx ->
                 ctx.json(hubs)
         );
-
-        // TODO: read and clean src/main/resources/hubs-global.csv (hubs, sorting centers, regional districts data —
-        // trim whitespace, fix casing, normalize dates/booleans) and expose the
-        // cleaned records here for the other services to consume.
     }
 
     // Execute the pipeline: read CSV -> parse -> normalise -> deduplicate.

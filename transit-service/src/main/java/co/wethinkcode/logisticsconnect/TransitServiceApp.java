@@ -14,15 +14,15 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
 
-import co.wethinkcode.logisticsconnect.mq.MqConfig;
 import co.wethinkcode.logisticsconnect.mq.PackageStatusConsumer;
 import co.wethinkcode.logisticsconnect.mq.PackageStatusEventProcessor;
 
 /**
  * Calculates an estimated arrival time for a hub.
  *
- * For each request, Transit gets hub details from the Hub Service and the
- * current delay stage from the Delay Stage Service.
+ * Transit retrieves hub information from Hub Service. Its current delay
+ * stage comes from the latest valid ActiveMQ package-status event, rather
+ * than a synchronous request to Delay Stage Service.
  */
 
 public class TransitServiceApp {
@@ -83,9 +83,6 @@ public class TransitServiceApp {
                 "trackedHubCount", eventProcessor.trackedHubCount()
         )));
 
-        // TODO (Calculates estimated arrival windows based on hub and delay stage.)
-        // Add domain endpoints for transit-service here.
-
         // Calculate an ETA for the hub ID supplied in the URL.
         app.get("/transit/{hubId}", ctx -> {
             String hubId = normalizeHubId(ctx.pathParam("hubId"));
@@ -100,7 +97,7 @@ public class TransitServiceApp {
                 // Step 1: confirm the hub exists and retrieve its details.
                 JsonNode hub = getHub(hubServiceUrl, hubId);
 
-                // Step 2: get the current delay stage from the Delay Stage Service.
+                // Step 2: read the latest stage received through the event consumer.
                 // The current delay stage comes from Transit's event-derived state.
                 int stage = eventProcessor.stageFor(hubId);
 
@@ -313,6 +310,4 @@ public class TransitServiceApp {
         }
     }
 }
-
-// MQ TODO: subscribes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.logisticsconnect.mq.MqConfig)
 
