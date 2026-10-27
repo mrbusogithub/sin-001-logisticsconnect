@@ -20,7 +20,7 @@ help:
 	@echo "  make test             Run unit tests and acceptance tests"
 	@echo "  make clean            Clean the independent Maven projects"
 
-# Build executable JARs for the four services.
+# Build executable JARs for all five application services.
 build:
 	$(MAVEN) -f ingestion-service/pom.xml package -DskipTests
 	$(MAVEN) -f hub-service/pom.xml package -DskipTests
