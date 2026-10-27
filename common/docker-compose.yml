@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   activemq:
     image: apache/activemq-classic:5.18.3
@@ -6,8 +5,11 @@ services:
     restart: unless-stopped
     
     ports:
-      - "61616:61616"   # OpenWire (client connections)
-      - "8161:8161"     # Web console
+      # OpenWire port used by the Java messaging clients.
+      - "127.0.0.1:61616:61616"
+
+      # Local-only administration console.
+      - "127.0.0.1:8161:8161"
 
     volumes:
       # Preserve the broker's persistent message store across restarts.
