@@ -171,8 +171,12 @@ public final class PackageStatusConsumer implements AutoCloseable {
             System.err.println(
                     "Package-status handler failed: "
                             + exception.getMessage());
-        } catch (JMSException e) {
-            throw new RuntimeException(e);
+        } catch (JMSException exception) {
+            // Log the message-read failure without throwing from the JMS listener.
+            // A bad message must not terminate the application's consumer loop.
+            System.err.println(
+                    "Could not read package-status JMS message: "
+                            + exception.getMessage());
         }
     }
 

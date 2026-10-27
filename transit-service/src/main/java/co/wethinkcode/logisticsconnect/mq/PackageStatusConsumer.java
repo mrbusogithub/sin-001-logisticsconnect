@@ -161,7 +161,7 @@ public final class PackageStatusConsumer implements AutoCloseable {
 
             eventHandler.accept(event);
 
-        } catch (IOException | IllegalArgumentException | JMSException exception) {
+        } catch (IOException | IllegalArgumentException exception) {
             System.err.println(
                     "Ignored invalid package-status message: "
                             + exception.getMessage());
@@ -170,6 +170,12 @@ public final class PackageStatusConsumer implements AutoCloseable {
             // Protect message consumption from an unexpected handler error.
             System.err.println(
                     "Package-status handler failed: "
+                            + exception.getMessage());
+        } catch (JMSException exception) {
+            // Log the message-read failure without throwing from the JMS listener.
+            // A bad message must not terminate the application's consumer loop.
+            System.err.println(
+                    "Could not read package-status JMS message: "
                             + exception.getMessage());
         }
     }
