@@ -70,18 +70,30 @@ public class IngestionServiceApp {
                             StandardCharsets.UTF_8
                     );
 
-            // Step 1: parse source rows into basic Hub objects.
-            List<Hub> parsed =
-                    parser.parse(reader);
+            // Step 1: parse the CSV rows into Hub objects.
+            List<Hub> parsed = parser.parse(reader);
 
-            // Step 2: normalise every parsed hub before comparing duplicates.
-            List<Hub> normalised =
-                    parsed.stream()
-                            .map(normalizer::normalize)
-                            .toList();
+            // Step 2: normalize casing, whitespace and placeholder values.
+            List<Hub> normalizedHubs = parsed.stream()
+                    .map(normalizer::normalize)
+                    .toList();
 
-            // Step 3: remove duplicates and return the final cleaned dataset.
-            return deduplicator.deduplicate(normalised);
+            // Step 3: remove records without a usable ID. Hub Service requires a
+            // valid ID to index records and serve lookups reliably.
+            List<Hub> validHubs = normalizedHubs.stream()
+                    .filter(hub -> hub.getHubId() != null
+                            && !hub.getHubId().isBlank())
+                    .toList();
+
+            // Report rejected records so a bad input file does not silently lose data.
+            if (validHubs.size() != normalizedHubs.size()) {
+                System.err.printf(
+                        "Skipped %d hub record(s) without a valid hub ID.%n",
+                        normalizedHubs.size() - validHubs.size());
+            }
+
+            // Step 4: deduplicate the valid records and return the cleaned dataset.
+            return deduplicator.deduplicate(validHubs);
 
         } catch (Exception e) {
             throw new IllegalStateException(
