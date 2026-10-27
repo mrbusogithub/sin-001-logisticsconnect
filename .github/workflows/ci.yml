@@ -16,17 +16,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  iteration-2-ci:
-    name: Build and test Iteration 2
+  logisticsconnect-ci:
+    name: Build and test Iterations 1–4
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
-      # Stage 1: Check out the source code.
+      # Step 1: Get the repository.
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # Stage 2: Install Java 21 and cache Maven dependencies.
+      # Step 2: Configure the Java version used by every Maven project.
       - name: Set up Java
         uses: actions/setup-java@v6
         with:
@@ -38,44 +38,49 @@ jobs:
             hub-service/pom.xml
             delay-stage-service/pom.xml
             transit-service/pom.xml
+            alertbot/pom.xml
             acceptance-tests/pom.xml
 
-      # Python runs the cross-platform service and smoke-test scripts.
+      # Step 3: Install Python for the cross-platform test runner.
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
-      # Stage 3: Compile and package each independent service module.
+      # Step 4: Compile and package all five independent services.
       - name: Build service modules
         run: |
           mvn -B -f ingestion-service/pom.xml package -DskipTests
           mvn -B -f hub-service/pom.xml package -DskipTests
           mvn -B -f delay-stage-service/pom.xml package -DskipTests
           mvn -B -f transit-service/pom.xml package -DskipTests
+          mvn -B -f alertbot/pom.xml package -DskipTests
 
-      # Stage 4: Run the unit tests for each service.
-      - name: Run service unit tests
+      # Step 5: Run all module unit tests.
+      - name: Run unit tests
         run: |
           mvn -B -f ingestion-service/pom.xml test
           mvn -B -f hub-service/pom.xml test
           mvn -B -f delay-stage-service/pom.xml test
           mvn -B -f transit-service/pom.xml test
+          mvn -B -f alertbot/pom.xml test
 
-      # Stage 5: Start the services automatically and run JUnit acceptance tests.
+      # Step 6: The runner starts ActiveMQ and all required services.
       - name: Run end-to-end acceptance tests
-        run: python scripts/run-iteration-2-tests.py --mode acceptance
+        run: |
+          python scripts/run-iteration-3-4-tests.py --mode acceptance --skip-build
 
-      # Stage 6: Check the REST flow using the Python smoke test.
-      - name: Run REST smoke test
-        run: python scripts/run-iteration-2-tests.py --mode smoke
+      # Step 7: Verify the live event flow and simulated alert.
+      - name: Run end-to-end smoke test
+        run: |
+          python scripts/run-iteration-3-4-tests.py --mode smoke --skip-build
 
-      # Always preserve startup logs if a service or test fails.
-      - name: Upload service logs on failure
+      # Preserve service logs when build or integration testing fails.
+      - name: Upload diagnostic logs
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: iteration-2-service-logs
-          path: target/iteration-2-logs/
+          name: logisticsconnect-integration-logs
+          path: target/iteration-3-4-logs/
           if-no-files-found: warn
           retention-days: 7
