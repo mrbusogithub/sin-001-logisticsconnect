@@ -1,114 +1,51 @@
-# common — Asynchronous Decoupling (MQ)
+# ActiveMQ Messaging
 
-## Overview
-
-Topic: `package-status-topic`
-
-Package status updates move from latency-driven RPC to bandwidth-driven messaging.
-
-Part of the [LogisticsConnect](../README.md) project. Holds the ActiveMQ broker shared
-by the services below — not a service itself, so it has no port of its own.
-
-- Producer: `delay-stage-service` (`../delay-stage-service`)
-- Consumer(s): `transit-service` (required, stage 3); `alertbot` (stretch, stage 4 —
-  reacts to stage changes to decide when to raise an alert)
-
-Broker URL and topic name are shared via a common `co.wethinkcode.logisticsconnect.mq.MqConfig` class
-(`BROKER_URL`, `TOPIC`). It's identical in every participating service's own source
-tree — each service here is an independent Maven project with no shared parent pom,
-so the common package is duplicated rather than imported from one place.
-
-## Project structure
-
-```
-common/
-├── docker-compose.yml
-└── README.md
-```
-
-This folder holds the broker config and notes only — the actual publish/subscribe
-code belongs in the producer/consumer services listed above (their poms already
-depend on `activemq-client`, and each already has
-`src/main/java/co/wethinkcode/logisticsconnect/mq/MqConfig.java`).
-
-## Build
-
-Nothing to build here directly — this folder just brings up the broker used by the
-services listed above.
-
-## Broker
-
-The broker is provisioned by `docker-compose.yml`.
-
-## Run
-
-Start it from the repository root:
-
-```
-docker compose -f common/docker-compose.yml up -d
-```
-
-- Broker URL for clients: `tcp://localhost:61616`
-- Web console: http://localhost:8161 (default admin/admin)
-
-Then start the producer/consumer services as usual (`mvn package && java -jar ...`
-from their own directories at the project root).
-
-## Test
-
-```
-docker compose ps          # confirm the broker container is healthy
-```
-
-Once the TODOs below are implemented, verify end-to-end by publishing a message from
-`delay-stage-service` and confirming the consumer(s) receive it — e.g. via logs, or by
-watching the topic in the web console.
-
-## TODO
-
-- Add `activemq-client` publish logic to `delay-stage-service` on its stage/state-change endpoint.
-- Add `activemq-client` subscriber logic to consumer service(s) above, replacing any
-  direct synchronous calls to `delay-stage-service`.
-- `alertbot` (stretch goal) needs its own subscriber logic too — its `pom.xml`
-  already has the `activemq-client` dependency alongside the other participating
-  services.
-
-## Overview on completing the 'TODO':
-
-# ActiveMQ Integration
+## Purpose
 
 ActiveMQ Classic provides asynchronous package-status messaging for
 LogisticsConnect.
 
-The broker runs independently of the five application services.
+- **Producer:** Delay Stage Service.
+- **Consumer:** Transit Service.
+- **Additional consumer:** AlertBot.
 
-Check the container:
+Both consumers independently subscribe to the topic `package-status-topic`.
+
+## Start the broker
+
+From the repository root:
+
+```bash
+docker compose -f common/docker-compose.yml up -d
+```
+
+Verify the broker:
 
 ```bash
 docker compose -f common/docker-compose.yml ps
 docker compose -f common/docker-compose.yml logs activemq
 ```
 
-Stop the broker:
+Stop it when no longer needed:
 
 ```bash
 docker compose -f common/docker-compose.yml down
 ```
 
-Default addresses:
+## Connection details
 
-| Purpose | Address |
-| -- | -- |
-| Java client connection (OpenWire) | tcp://localhost:61616 |
-| Web console | http://localhost:8161 |
+| Purpose | Default |
+|---|---|
+| Broker address | `tcp://localhost:61616` |
+| Topic | `package-status-topic` |
+| Web console | `http://localhost:8161` |
 
-The web console is for development and inspection, not a required dependency for normal application requests.
+The web console is an optional development tool for inspecting the broker.
+Normal API requests do not require it.
 
-## Topic contract
+## Event contract
 
-Topic: `package-status-topic`
-
-Example event:
+Example JSON message:
 
 ```json
 {
@@ -118,69 +55,89 @@ Example event:
 }
 ```
 
-Contract rules:
+The contract requires:
 
-- `hubId` is a non-blank string, normalized to uppercase.
-- `stage` is an integer from 0 through 8.
-- `timestamp` is a valid ISO-8601 instant.
-- All three fields are required.
-- Invalid messages are ignored by consumers and must not update application state or generate an alert.
+- `hubId`: a non-blank string; hub IDs are normalized to uppercase.
+- `stage`: an integer from 0 through 8.
+- `timestamp`: a valid ISO-8601 instant.
 
-The contract implementation is intentionally duplicated in the three independent Maven projects to prevent compile-time dependencies between the producer and consumers.
+All three fields are required. Invalid JSON, missing fields, invalid stages and
+invalid timestamps are rejected by the consumers without updating their state.
 
-## Responsibilities
+## Event responsibilities
 
-- **Delay Stage Service**: validates stage changes and publishes an event only when the stage actually changes.
-- **Transit Service**: consumes events and updates its local stage state. It does not call Delay Stage Service to poll for the current stage.
-- **AlertBot**: independently consumes the same topic and generates a simulated notification when `stage >= ALERT_STAGE_THRESHOLD`.
+### Delay Stage Service
 
-## Delivery and subscriptions
+When a valid stage changes, the producer publishes a JSON text message with
+persistent delivery. Repeating the existing stage does not publish an event.
 
-The producer uses persistent JMS delivery.
+If the event cannot be published, the REST endpoint returns HTTP 503 and
+does not commit the requested stage to its in-memory stage map.
 
-Transit and AlertBot use separate durable topic subscriptions. Persistent messages can be retained for an existing durable subscription while its consumer is offline, subject to broker persistence and message retention.
+### Transit Service
 
-Each consumer must use a stable client ID and subscription name. A single durable subscription identity should not be used by multiple concurrently running application instances.
+Transit updates its local stage state as events arrive. It uses hub details
+from Hub Service and the latest valid event to calculate the ETA.
+
+It does not poll Delay Stage Service for the latest stage.
+
+### AlertBot
+
+AlertBot uses the same topic and applies the configured inclusive rule:
+
+```text
+stage >= ALERT_STAGE_THRESHOLD
+```
+
+The default threshold is 5. Alerts are simulated through the application
+logs and `GET /alerts`.
 
 ## Configuration
 
-| Variable | Default | Purpose |
-| -- | -- | -- |
-| `ACTIVEMQ_BROKER_URL` | `tcp://localhost:61616` | Broker address |
-| `PACKAGE_STATUS_TOPIC` | `package-status-topic` | Topic name |
-| `ACTIVEMQ_USERNAME` | Unset | Optional broker username |
-| `ACTIVEMQ_PASSWORD` | Unset | Optional broker password |
-| `ACTIVEMQ_RECONNECT_DELAY_MS` | 5000 | Delay between consumer reconnect attempts |
-| `TRANSIT_JMS_CLIENT_ID` | `logisticsconnect-transit` | Transit durable client ID |
-| `TRANSIT_JMS_SUBSCRIPTION` | `transit-package-status` | Transit subscription name |
-| `ALERTBOT_JMS_CLIENT_ID` | `logisticsconnect-alertbot` | AlertBot durable client ID |
-| `ALERTBOT_JMS_SUBSCRIPTION` | `alertbot-package-status` | AlertBot subscription name |
-| `ALERT_STAGE_THRESHOLD` | 5 | Alert stage threshold |
+| Environment variable | Default |
+|---|---|
+| `ACTIVEMQ_BROKER_URL` | `tcp://localhost:61616` |
+| `PACKAGE_STATUS_TOPIC` | `package-status-topic` |
+| `ACTIVEMQ_RECONNECT_DELAY_MS` | `5000` |
+| `ACTIVEMQ_USERNAME` | Unset |
+| `ACTIVEMQ_PASSWORD` | Unset |
+| `TRANSIT_JMS_CLIENT_ID` | `logisticsconnect-transit` |
+| `TRANSIT_JMS_SUBSCRIPTION` | `transit-package-status` |
+| `ALERTBOT_JMS_CLIENT_ID` | `logisticsconnect-alertbot` |
+| `ALERTBOT_JMS_SUBSCRIPTION` | `alertbot-package-status` |
+| `ALERT_STAGE_THRESHOLD` | `5` |
 
-When broker credentials are not configured, the Java clients connect without explicit username and password arguments. Configure credentials to match the actual broker if authentication is enabled.
+The client ID and durable subscription name must remain stable for each
+consumer. Each concurrently running consumer application should use its own
+client identity.
 
-## Failure handling and duplicate events
+## Reliability and limitations
 
-Malformed JSON, missing required fields, invalid stages and invalid timestamps are logged and ignored.
+The consumers retry their connection when the broker is unavailable during
+startup or a connection failure.
 
-Transit ignores exact duplicates and out-of-order events. AlertBot ignores an exact duplicate event so it does not generate the same simulated alert twice.
+The producer sends events persistently, and the consumers use durable topic
+subscriptions. These features help retain events for an existing durable
+subscription while a consumer is offline, subject to broker persistence and
+retention configuration.
 
-The consumers' deduplication sets, Transit state, Delay Stage state, and AlertBot alert history are in memory. They reset when their respective application processes restart.
+Transit ignores exact duplicate events and events that are older than its
+latest accepted event for a hub. AlertBot suppresses duplicate event keys.
 
-The producer returns HTTP 503 when it cannot publish a requested state change. The implementation does not include a transactional outbox; stronger business-state and event-delivery guarantees would require additional persistent storage and recovery logic.
+The deduplication sets and application states are held in memory. They reset
+when the application restarts. The design does not implement a persistent
+database or transactional outbox, so it does not promise an atomic transaction
+between business-state updates and broker publication.
 
-## End-to-end verification
+## Integration testing
 
-Run the full integration test from the repository root:
+From the repository root, run:
 
 ```bash
 python scripts/run-iteration-3-4-tests.py --mode acceptance
-```
-
-Run the full smoke test:
-
-```bash
 python scripts/run-iteration-3-4-tests.py --mode smoke
 ```
 
-Both commands start ActiveMQ if the local broker port is not already open. The runner also starts required services and waits for Transit and AlertBot to connect to the broker.
+The runner starts ActiveMQ if it is not already listening, starts or reuses the
+application services, waits for Transit and AlertBot to connect, and performs
+the relevant integration checks.

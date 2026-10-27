@@ -1,34 +1,85 @@
-# Iteration 2 Acceptance Tests
+# LogisticsConnect Acceptance Tests
 
-This independent Maven module tests the real REST integration between
-the four LogisticsConnect services.
+## Purpose
+
+This independent Maven module tests the live integration of LogisticsConnect
+services over HTTP and ActiveMQ.
+
+The service applications are independent Maven projects; these acceptance
+tests exercise the running processes rather than importing their internal
+classes.
 
 ## Prerequisites
 
-- Java 17 or later
-- Maven 3.8 or later
-- All four services running
-- The sample dataset containing hub H-500
+- Java 21.
+- Maven 3.8 or later.
+- Python 3.
+- Docker with Docker Compose.
+- The sample dataset containing hub `H-500`.
 
-## Run the acceptance tests
+The automatic runner starts ActiveMQ and the required services if they are
+not already running.
 
-Start the services in separate terminals, following the root README.
+## Run acceptance tests
 
-From the repository root, run:
+From the repository root:
 
-```powershell
+```bash
+python scripts/run-iteration-3-4-tests.py --mode acceptance
+```
+
+Or use Make:
+
+```bash
+make acceptance-test
+```
+
+For the full event-flow smoke test:
+
+```bash
+python scripts/run-iteration-3-4-tests.py --mode smoke
+```
+
+Or:
+
+```bash
+make smoke-test
+```
+
+## Coverage
+
+The existing acceptance-test class verifies the REST integration and the
+asynchronous messaging flow, including:
+
+1. Service health endpoints.
+2. Hub data returned from the cleaned dataset.
+3. Case-insensitive hub lookup.
+4. Delay-stage validation and storage.
+5. Transit's ETA calculation using event-derived stage state.
+6. Invalid delay stages and unknown hubs.
+7. A real delay-stage event reaching Transit through ActiveMQ.
+8. A threshold event reaching AlertBot and producing a simulated alert.
+
+The unit tests separately cover event serialization, invalid event fields,
+publisher behaviour, duplicate processing, timestamp ordering and AlertBot
+threshold boundaries.
+
+## Manual execution
+
+To run the JUnit tests without the automatic runner, first start ActiveMQ and
+all five application services. Then execute:
+
+```bash
 mvn -f acceptance-tests/pom.xml test
 ```
 
-The tests verify:
+Use the automatic runner for the normal development workflow because it also
+verifies broker connectivity and service startup.
 
-1. All four services respond to health requests.
-2. Hub Service exposes the cleaned hub records.
-3. Hub lookup is case-insensitive.
-4. Delay Stage accepts and stores stage 3.
-5. Transit returns 165 minutes (`PT2H45M`) for stage 3.
-6. Invalid delay stages return HTTP 400.
-7. Unknown hubs return HTTP 404.
+## Logs
 
-The acceptance tests require running services and are intentionally
-separate from the unit tests in each service module.
+On local integration-test failures, inspect the logs under:
+
+```text
+target/iteration-3-4-logs/
+```

@@ -1,41 +1,51 @@
-# HubServiceApp
+# Hub Service
 
-## Overview
+## Purpose
 
-Serves provinces and sorting centers (place-name source of truth).
+Hub Service loads the cleaned hub data from Ingestion at startup and keeps a
+local cache for efficient lookups. Transit and Delay Stage use it to confirm
+hub IDs and retrieve hub information.
 
-Part of the [LogisticsConnect](../README.md) project. Independent Maven module, no
-parent pom.
+## Endpoints
 
-## Project structure
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health` | Returns service health and the cached hub count. |
+| GET | `/hubs` | Returns all cached hubs. |
+| GET | `/hubs/{hubId}` | Returns one hub by ID. |
 
+Default port: `7051`.
+
+Hub ID lookup is case-insensitive. An unknown hub returns HTTP 404.
+
+## Configuration
+
+`INGESTION_SERVICE_URL` sets the Ingestion base URL. The default is
+`http://localhost:7050`.
+
+`HUB_SERVICE_PORT` sets the HTTP port. The default is `7051`.
+
+The service loads its cache when it starts. If Ingestion is unavailable or
+returns invalid hub data, Hub Service does not start successfully with an
+empty or incomplete directory.
+
+## Build and test
+
+From the repository root:
+
+```bash
+mvn -f hub-service/pom.xml package
+mvn -f hub-service/pom.xml test
 ```
-hub-service/
-├── pom.xml
-└── src/main/java/co/wethinkcode/logisticsconnect/HubServiceApp.java
+
+Check the endpoints:
+
+```bash
+curl http://localhost:7051/health
+curl http://localhost:7051/hubs
+curl http://localhost:7051/hubs/H-500
 ```
 
-## Build
+## Limitations
 
-```
-mvn package
-```
-
-## Run
-
-```
-java -jar target/hub-service.jar
-```
-
-Listens on port `7051`.
-
-## Test
-
-No automated tests yet. Manually verify it's up:
-
-```
-curl http://localhost:7051/health   # -> OK
-```
-
-To add real tests, add JUnit 5 + the Surefire plugin to `pom.xml`, put tests under
-`src/test/java/co/wethinkcode/logisticsconnect/`, and run `mvn test`.
+Hub data is cached in memory and refreshed when the service restarts.
