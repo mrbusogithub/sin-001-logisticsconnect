@@ -42,7 +42,7 @@ class SmokeTestError(RuntimeError):
 
 
 def request_json(url, method="GET", payload=None):
-    """Send an HTTP request and return its decoded JSON response."""
+    """Send an HTTP request and decode JSON responses when available."""
     body = None
     headers = {}
 
@@ -60,11 +60,21 @@ def request_json(url, method="GET", payload=None):
     try:
         with urlopen(request, timeout=5) as response:
             text = response.read().decode("utf-8")
-            return json.loads(text) if text.strip() else None
+
+            # Some existing health endpoints return plain text such as "OK".
+            if not text.strip():
+                return None
+
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                # Preserve plain-text responses instead of crashing.
+                return text
 
     except HTTPError as error:
         response_body = error.read().decode(
-            "utf-8", errors="replace"
+            "utf-8",
+            errors="replace",
         )
 
         raise SmokeTestError(
@@ -137,9 +147,25 @@ def run_smoke_test():
     for name, base_url in services:
         health = request_json(f"{base_url}/health")
 
-        if not isinstance(health, dict):
+        # Ingestion currently returns plain-text "OK".
+        if isinstance(health, str):
+            if health.strip() != "OK":
+                raise SmokeTestError(
+                    f"{name} returned an unexpected health response: "
+                    f"{health!r}"
+                )
+
+        # The other services return JSON health responses.
+        elif isinstance(health, dict):
+            if health.get("status") != "UP":
+                raise SmokeTestError(
+                    f"{name} is not UP: {health}"
+                )
+
+        else:
             raise SmokeTestError(
-                f"{name} did not return a JSON health response."
+                f"{name} returned an invalid health response: "
+                f"{health!r}"
             )
 
         print(f"   PASS: {name}")
