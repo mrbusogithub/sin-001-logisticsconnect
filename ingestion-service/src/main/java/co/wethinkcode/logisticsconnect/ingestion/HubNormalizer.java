@@ -49,26 +49,46 @@ public class HubNormalizer {
             case "western cape" -> "Western Cape";
             case "eastern cape" -> "Eastern Cape";
             case "free state" -> "Free State";
-            case "kwazulu natal", "kwa-zulu natal" -> "KwaZulu-Natal";
+
+            // Accept spelling and hyphen variations of the same province.
+            case "kwazulu natal",
+                 "kwa-zulu natal",
+                 "kwazulu-natal",
+                 "kwa-zulu-natal" -> "KwaZulu-Natal";
+
             case "limpopo" -> "Limpopo";
             case "mpumalanga" -> "Mpumalanga";
             case "north west" -> "North West";
             case "northern cape" -> "Northern Cape";
+
+            // Keep a consistent format for other province names.
             default -> toTitleCase(normalized);
         };
     }
 
-    // Trim outer whitespace, collapse repeated whitespace, and represent blanks as null.
+    /**
+     * Trims whitespace, collapses repeated spaces and converts known
+     * placeholders into null so they are not treated as real data.
+     */
     private String normalizeText(String value) {
         if (value == null) {
             return null;
         }
 
+        // Remove padding and normalize internal whitespace first.
         String normalized = value
                 .trim()
                 .replaceAll("\\s+", " ");
 
-        return normalized.isBlank() ? null : normalized;
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        // Missing values must not become real province or hub names.
+        return switch (normalized.toLowerCase(Locale.ROOT)) {
+            case "n/a", "na", "tbd", "unknown", "-", "nan" -> null;
+            default -> normalized;
+        };
     }
 
     // Fallback for an unlisted province: capitalise the first letter of each word.
