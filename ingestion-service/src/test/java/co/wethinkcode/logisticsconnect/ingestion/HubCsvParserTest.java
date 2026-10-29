@@ -99,4 +99,20 @@ public class HubCsvParserTest {
         assertFalse(hubs.get(2).getActive());
         assertFalse(hubs.get(3).getActive());
     }
+
+    @Test
+    void shouldCountMalformedRowsDropped() throws Exception {
+        String csv = """
+            hub_id,Province,sorting_center,active
+            H-500,Gauteng,Johannesburg Central,Y
+            H-501,Western Cape,Cape Town Port,N
+            H-502,only-two-columns
+            """;
+
+        HubCsvParser.ParseResult result =
+                parser.parseWithStats(new StringReader(csv));
+
+        assertEquals(2, result.hubs().size());
+        assertEquals(1, result.invalidRowsDropped());
+    }
 }

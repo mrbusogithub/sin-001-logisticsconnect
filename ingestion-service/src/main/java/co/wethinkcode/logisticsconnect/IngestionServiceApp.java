@@ -1,6 +1,7 @@
 package co.wethinkcode.logisticsconnect;
 
 import co.wethinkcode.logisticsconnect.ingestion.HubCsvParser;
+import co.wethinkcode.logisticsconnect.ingestion.HubDataset;
 import co.wethinkcode.logisticsconnect.ingestion.HubDeduplicator;
 import co.wethinkcode.logisticsconnect.ingestion.HubNormalizer;
 import co.wethinkcode.logisticsconnect.model.Hub;
@@ -10,92 +11,131 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
- * Application entry point: loads the cleaned data and exposes it through HTTP.
+ * Loads, cleans, and exposes hub data through HTTP.
  */
-
 public class IngestionServiceApp {
 
-    // Resource path is relative to the application's classpath, not the working directory.
-    private static final String CSV_RESOURCE =
-            "/hubs-global.csv";
+    // Read the CSV from the packaged application resources.
+    private static final String CSV_RESOURCE = "/hubs-global.csv";
 
-    // Start the service and register its HTTP endpoints.
     public static void main(String[] args) {
+        // Load the cleaned data and its statistics at startup.
+        HubDataset dataset = loadHubDataset();
 
-        // Load once at startup so requests can serve the already-cleaned data.
-        List<Hub> hubs = loadHubs();
+        System.out.printf(
+                "Ingestion: parsed %d row(s), kept %d hub(s), "
+                        + "dropped %d invalid row(s), "
+                        + "removed %d duplicate(s).%n",
+                dataset.parsedRows(),
+                dataset.hubs().size(),
+                dataset.invalidDropped(),
+                dataset.duplicatesRemoved()
+        );
 
         Javalin app = Javalin.create().start(7050);
 
-        // Simple liveness endpoint used to check that the service is running.
-        app.get("/health", ctx -> ctx.result("OK"));
+        // Use the same JSON health-response format as the other services.
+        app.get("/health", ctx -> ctx.json(Map.of(
+                "status", "UP",
+                "service", "ingestion-service",
+                "hubCount", dataset.hubs().size()
+        )));
 
-        // Return the cleaned hub collection as JSON for downstream services.
-        app.get("/hubs", ctx ->
-                ctx.json(hubs)
-        );
+        // Keep the existing contract: this endpoint returns a JSON array.
+        app.get("/hubs", ctx -> ctx.json(dataset.hubs()));
+
+        // Expose the results of the data-cleaning process.
+        app.get("/stats", ctx -> ctx.json(Map.of(
+                "parsedRows", dataset.parsedRows(),
+                "hubCount", dataset.hubs().size(),
+                "invalidDropped", dataset.invalidDropped(),
+                "duplicatesRemoved", dataset.duplicatesRemoved()
+        )));
     }
 
-    // Execute the pipeline: read CSV -> parse -> normalise -> deduplicate.
+    // Preserve the existing method used by tests and other callers.
     static List<Hub> loadHubs() {
+        return loadHubDataset().hubs();
+    }
 
+    // Run the parsing, validation, normalisation, and deduplication pipeline.
+    static HubDataset loadHubDataset() {
         HubCsvParser parser = new HubCsvParser();
         HubNormalizer normalizer = new HubNormalizer();
-        HubDeduplicator deduplicator =
-                new HubDeduplicator();
+        HubDeduplicator deduplicator = new HubDeduplicator();
 
-        // Open the packaged CSV resource and automatically close it afterward.
         try (InputStream inputStream =
                      IngestionServiceApp.class
                              .getResourceAsStream(CSV_RESOURCE)) {
 
-            // Fail clearly if the CSV was not copied into the application resources.
             if (inputStream == null) {
                 throw new IllegalStateException(
                         "Could not find " + CSV_RESOURCE
                 );
             }
 
-            // Decode CSV bytes as UTF-8 to avoid platform-dependent character handling.
-            Reader reader =
-                    new InputStreamReader(
-                            inputStream,
-                            StandardCharsets.UTF_8
-                    );
+            Reader reader = new InputStreamReader(
+                    inputStream,
+                    StandardCharsets.UTF_8
+            );
 
-            // Step 1: parse the CSV rows into Hub objects.
-            List<Hub> parsed = parser.parse(reader);
+            // Parse the source rows and count malformed rows.
+            HubCsvParser.ParseResult parseResult =
+                    parser.parseWithStats(reader);
 
-            // Step 2: normalize casing, whitespace and placeholder values.
-            List<Hub> normalizedHubs = parsed.stream()
+            // Normalise records before validating their IDs.
+            List<Hub> normalisedHubs = parseResult.hubs()
+                    .stream()
                     .map(normalizer::normalize)
                     .toList();
 
-            // Step 3: remove records without a usable ID. Hub Service requires a
-            // valid ID to index records and serve lookups reliably.
-            List<Hub> validHubs = normalizedHubs.stream()
-                    .filter(hub -> hub.getHubId() != null
-                            && !hub.getHubId().isBlank())
-                    .toList();
+            int invalidDropped = parseResult.invalidRowsDropped();
+            List<Hub> validHubs = new ArrayList<>();
 
-            // Report rejected records so a bad input file does not silently lose data.
-            if (validHubs.size() != normalizedHubs.size()) {
-                System.err.printf(
-                        "Skipped %d hub record(s) without a valid hub ID.%n",
-                        normalizedHubs.size() - validHubs.size());
+            // Reject records that cannot be identified by a usable hub ID.
+            for (Hub hub : normalisedHubs) {
+                if (isMissingHubId(hub.getHubId())) {
+                    invalidDropped++;
+                    continue;
+                }
+
+                validHubs.add(hub);
             }
 
-            // Step 4: deduplicate the valid records and return the cleaned dataset.
-            return deduplicator.deduplicate(validHubs);
+            // Deduplicate the validated records and capture the count.
+            HubDeduplicator.DeduplicationResult deduplication =
+                    deduplicator.deduplicateWithStats(validHubs);
 
-        } catch (Exception e) {
+            return new HubDataset(
+                    deduplication.hubs(),
+                    parseResult.hubs().size(),
+                    invalidDropped,
+                    deduplication.duplicatesRemoved()
+            );
+
+        } catch (Exception exception) {
             throw new IllegalStateException(
                     "Failed to load hub data",
-                    e
+                    exception
             );
         }
+    }
+
+    // Recognise blank IDs and common placeholder values as invalid.
+    static boolean isMissingHubId(String hubId) {
+        if (hubId == null || hubId.isBlank()) {
+            return true;
+        }
+
+        return switch (hubId.trim().toLowerCase(Locale.ROOT)) {
+            case "n/a", "na", "tbd", "unknown", "-", "nan" -> true;
+            default -> false;
+        };
     }
 }

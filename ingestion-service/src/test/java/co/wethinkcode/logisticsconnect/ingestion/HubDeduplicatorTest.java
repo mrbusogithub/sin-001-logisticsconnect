@@ -187,4 +187,35 @@ public class HubDeduplicatorTest {
         // Their province values do not establish a reliable identity.
         assertEquals(2, result.size());
     }
+
+    @Test
+    void shouldReportHowManyDuplicateRecordsWereRemoved() {
+        List<Hub> hubs = List.of(
+                new Hub(
+                        "H-515",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        true
+                ),
+                new Hub(
+                        "H-504",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        false
+                ),
+                new Hub(
+                        "H-500",
+                        "Gauteng",
+                        "Johannesburg Central",
+                        true
+                )
+        );
+
+        HubDeduplicator.DeduplicationResult result =
+                deduplicator.deduplicateWithStats(hubs);
+
+        assertEquals(1, result.hubs().size());
+        assertEquals(2, result.duplicatesRemoved());
+        assertEquals("H-500", result.hubs().get(0).getHubId());
+    }
 }

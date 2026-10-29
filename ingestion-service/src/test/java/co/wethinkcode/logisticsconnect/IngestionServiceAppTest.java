@@ -41,4 +41,13 @@ class IngestionServiceAppTest {
                                 || "H-510".equals(hub.getHubId())
                                 || "H-515".equals(hub.getHubId())));
     }
+
+    @Test
+    void shouldRecogniseBlankAndPlaceholderHubIdsAsInvalid() {
+        assertTrue(IngestionServiceApp.isMissingHubId(null));
+        assertTrue(IngestionServiceApp.isMissingHubId("  "));
+        assertTrue(IngestionServiceApp.isMissingHubId("N/A"));
+        assertTrue(IngestionServiceApp.isMissingHubId(" unknown "));
+        assertFalse(IngestionServiceApp.isMissingHubId("H-500"));
+    }
 }
