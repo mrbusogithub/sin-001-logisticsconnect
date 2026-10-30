@@ -540,3 +540,9 @@ Updated ETA              Simulated alert
 The core objective is to demonstrate a working integration system whose
 services have clear responsibilities, explicit REST and JMS contracts,
 automated tests, a reproducible broker setup and a simple end-to-end demo.
+
+## Demo video
+
+[Watch the LogisticsConnect project demonstration](https://youtu.be/95lY3Me8_V0)
+
+WTC-HT6LK7MA
