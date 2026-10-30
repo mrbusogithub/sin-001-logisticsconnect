@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Provides hub information to other LogisticsConnect services.
@@ -35,51 +36,91 @@ public class HubServiceApp {
             "http://localhost:7050";
 
     public static void main(String[] args) {
-        // Allow the Ingestion Service address to be changed without editing code.
+        // Allow the Ingestion Service address to be configured.
         String ingestionUrl = System.getenv().getOrDefault(
                 "INGESTION_SERVICE_URL", DEFAULT_INGESTION_URL);
 
-        // Load the hub data before accepting requests.
-        // If this fails, the application stops instead of starting without data.
-        HubDirectory directory = HubDirectory.load(ingestionUrl);
+        // Load the initial directory before accepting requests.
+        AtomicReference<HubDirectory> directoryRef =
+                new AtomicReference<>(HubDirectory.load(ingestionUrl));
 
-        // Use the configured port, or 7051 when no setting is provided.
         int port = Integer.parseInt(
                 System.getenv().getOrDefault("HUB_SERVICE_PORT", "7051"));
 
         Javalin app = Javalin.create().start(port);
 
-        // Report whether the service is running and how many hubs are cached.
+        // Report the current cached hub count.
         app.get("/health", ctx -> ctx.json(Map.of(
                 "status", "UP",
                 "service", "hub-service",
-                "hubCount", directory.all().size()
+                "hubCount", directoryRef.get().all().size()
         )));
 
-        // Return every cached hub as a JSON array.
-        app.get("/hubs", ctx -> ctx.json(directory.all()));
+        // Return the currently cached hub collection.
+        app.get("/hubs", ctx -> ctx.json(directoryRef.get().all()));
+
+        // Refresh the cache from Ingestion without restarting this service.
+        app.post("/hubs/reload", ctx -> {
+            try {
+                // Build the new directory first. Do not replace the old one yet.
+                HubDirectory reloaded = HubDirectory.load(ingestionUrl);
+
+                // Swap the reference only after loading and validation succeed.
+                directoryRef.set(reloaded);
+
+                System.out.printf(
+                        "Reloaded hub directory: %d hub(s).%n",
+                        reloaded.all().size()
+                );
+
+                ctx.json(Map.of(
+                        "status", "RELOADED",
+                        "hubCount", reloaded.all().size()
+                ));
+
+            } catch (RuntimeException exception) {
+                // Keep serving the previous directory after a failed reload.
+                System.err.println(
+                        "Hub directory reload failed: "
+                                + exception.getMessage()
+                );
+
+                error(
+                        ctx,
+                        503,
+                        "RELOAD_FAILED",
+                        "Could not reload hubs from Ingestion."
+                );
+            }
+        });
 
         // Return one hub using its ID from the URL.
         app.get("/hubs/{hubId}", ctx -> {
             String hubId = normalizeHubId(ctx.pathParam("hubId"));
 
-            // Reject a missing or blank ID before searching the cache.
             if (hubId.isBlank()) {
-                error(ctx, 400, "INVALID_HUB_ID",
-                        "Hub ID must not be blank.");
+                error(
+                        ctx,
+                        400,
+                        "INVALID_HUB_ID",
+                        "Hub ID must not be blank."
+                );
                 return;
             }
 
-            JsonNode hub = directory.find(hubId);
+            // Read from the current directory, including after a reload.
+            JsonNode hub = directoryRef.get().find(hubId);
 
-            // A valid ID can still refer to a hub that does not exist.
             if (hub == null) {
-                error(ctx, 404, "HUB_NOT_FOUND",
-                        "No hub exists with ID " + hubId + ".");
+                error(
+                        ctx,
+                        404,
+                        "HUB_NOT_FOUND",
+                        "No hub exists with ID " + hubId + "."
+                );
                 return;
             }
 
-            // Javalin serialises the hub JSON object into the HTTP response.
             ctx.json(hub);
         });
     }
