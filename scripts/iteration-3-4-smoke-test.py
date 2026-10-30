@@ -40,6 +40,10 @@ TIMEOUT_SECONDS = 15
 class SmokeTestError(RuntimeError):
     """Raised when a live end-to-end check fails."""
 
+def require(condition, message):
+    """Stop the smoke test when a required check fails."""
+    if not condition:
+        raise SmokeTestError(message)
 
 def request_json(url, method="GET", payload=None):
     """Send an HTTP request and decode JSON responses when available."""
@@ -147,28 +151,34 @@ def run_smoke_test():
     for name, base_url in services:
         health = request_json(f"{base_url}/health")
 
-        # Ingestion currently returns plain-text "OK".
-        if isinstance(health, str):
-            if health.strip() != "OK":
-                raise SmokeTestError(
-                    f"{name} returned an unexpected health response: "
-                    f"{health!r}"
-                )
-
-        # The other services return JSON health responses.
-        elif isinstance(health, dict):
-            if health.get("status") != "UP":
-                raise SmokeTestError(
-                    f"{name} is not UP: {health}"
-                )
-
-        else:
-            raise SmokeTestError(
-                f"{name} returned an invalid health response: "
-                f"{health!r}"
+        require(
+            isinstance(health, dict)
+            and health.get("status") == "UP",
+            f"{name} returned an unexpected health response: {health!r}",
             )
 
         print(f"   PASS: {name}")
+
+    stats = request_json(f"{INGESTION_URL}/stats")
+
+    required_counters = (
+        "parsedRows",
+        "hubCount",
+        "invalidDropped",
+        "duplicatesRemoved",
+    )
+
+    require(
+        isinstance(stats, dict)
+        and all(
+            isinstance(stats.get(field), int)
+            and stats[field] >= 0
+            for field in required_counters
+        ),
+        f"Ingestion returned invalid statistics: {stats!r}",
+        )
+
+    print(f"   PASS: Ingestion statistics {stats}")
 
     # Confirm the configured sample hub exists before mutating its state.
     request_json(f"{HUB_URL}/hubs/{HUB_ID}")
