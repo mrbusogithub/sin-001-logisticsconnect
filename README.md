@@ -136,7 +136,7 @@ test execution.
 | [`docs/REST-CONTRACTS.md`](docs/REST-CONTRACTS.md) | REST endpoints, request/response shapes, JMS event contract, configuration and limitations. |
 | [`scripts/`](scripts/) | Cross-platform Python smoke tests and automatic service/test runners. |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | GitHub Actions build, unit-test and integration pipeline. |
-| [`Makefile`](Makefile) | Short commands for building, testing and cleaning the project. |
+| [`Makefile`](Makefile) | Short commands for building, running, stopping, testing and cleaning the project. |
 
 ## 5. Prerequisites
 
@@ -166,7 +166,23 @@ flow.
 make help
 ```
 
-This prints the Makefile's supported commands and their purposes.
+That prints every supported target. The main ones:
+
+| Target | Purpose |
+| -- | -- |
+| `make build` | Build all five service JARs |
+| `make run-broker` | Start ActiveMQ (`docker compose up -d`) |
+| `make run-ingestion` | Start Ingestion on `:7050` |
+| `make run-hub` | Start Hub on `:7051` |
+| `make run-delay-stage` | Start Delay Stage on `:7052` |
+| `make run-transit` | Start Transit on `:7053` |
+| `make run-alertbot` | Start AlertBot on `:7054` |
+| `make set-stage [HUB=H-500] [STAGE=5]` | POST a delay-stage change |
+| `make show-transit [HUB=H-500]` | GET Transit's ETA |
+| `make show-alerts` | GET AlertBot's retained alerts |
+| `make status` | Show which services are up |
+| `make stop` | Kill all services and take the broker down |
+| `make smoke-test` / `make acceptance-test` / `make test` | Run tests |
 
 ### Step 2: Run the complete event-flow smoke test
 
@@ -209,6 +225,13 @@ Run `make help` whenever you need a reminder of the available commands.
 |---|---|
 | `make help` | Displays the development commands. |
 | `make build` | Packages all five application services into runnable JARs. |
+| `make run-broker` | Starts ActiveMQ via `docker compose up -d`. |
+| `make run-ingestion` / `run-hub` / `run-delay-stage` / `run-transit` / `run-alertbot` | Starts one service in the foreground. Ctrl-C stops it. |
+| `make set-stage [HUB=...] [STAGE=...]` | POSTs a delay-stage change and echoes the raw curl call. |
+| `make show-transit [HUB=...]` | GETs Transit's ETA for a hub. |
+| `make show-alerts` | GETs AlertBot's retained simulated alerts. |
+| `make status` | Shows which services and the broker are up. |
+| `make stop` | Kills all application services and stops the broker. Idempotent. |
 | `make unit-test` | Runs unit tests in each application service. |
 | `make acceptance-test` | Builds/starts the required system components and runs the JUnit acceptance tests. |
 | `make smoke-test` | Starts the required components and verifies the end-to-end event flow. |
@@ -238,6 +261,11 @@ Use that option only after the service JARs have been built successfully.
 
 The automated runner is recommended for testing. For a manual demonstration,
 start the broker and services in separate terminals.
+
+The commands below use the raw `java -jar` form. The same steps are
+available as `make run-broker`, `make run-ingestion`, `make run-hub`,
+`make run-delay-stage`, `make run-transit`, `make run-alertbot` — see
+Section 7.
 
 ### Step 1: Start ActiveMQ
 
@@ -300,6 +328,11 @@ change.
 
 The following example uses sample hub `H-500`.
 
+> **Tip:** each step below has a `make` shorthand — `make show-transit`,
+> `make set-stage STAGE=5`, `make show-alerts`. The raw `curl` commands
+> are kept below so the HTTP contract stays visible. Run `make status`
+> first to confirm all five services and the broker are up.
+
 ### Step 1: Check the services
 
 The following endpoints should respond successfully:
@@ -310,8 +343,8 @@ The following endpoints should respond successfully:
 - `GET http://localhost:7053/health`
 - `GET http://localhost:7054/health`
 
-Ingestion currently returns plain-text `OK`; the other services expose JSON
-health responses.
+All five services return JSON health responses (`{"status": "UP", ...}`).
+Run `make status` for a one-line summary of all five plus the broker.
 
 ### Step 2: Check hub data
 
